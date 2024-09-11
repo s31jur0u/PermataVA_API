@@ -1,11 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.Data.SqlClient;
 using System.Security.Cryptography;
-using System.Security.Cryptography.Xml;
-using System.Text.Encodings.Web;
+using Microsoft.AspNetCore.Mvc;
 
-[Route("v1.0/access-token")]
+namespace VA_API.Controllers.V1._0;
+
+[Route("v1.0/access-token/[action]")]
 public class AccessTokenController : ControllerBase
 {
     private readonly IJwtTokenGeneratorService _jwtTokenGeneratorService;
@@ -18,38 +16,38 @@ public class AccessTokenController : ControllerBase
         _sqlConnectionFactory = sqlConnectionFactory;
     }
 
-    [HttpPost("[action]")]
+    [HttpPost("")]
     public IActionResult B2B([FromBody] B2BRequest request)
     {
-        HTTPHeader headers = RequestHeaderHelper.GetHeader(Request);
+        HttpHeader headers = RequestHeaderHelper.GetHeader(Request);
         bool ok = false;
 
-        string token = string.Empty;
-        int expiry_minutes = 0;
-        int.TryParse(_config["TOKEN:EXPIRY"], out expiry_minutes);
+        string token;
+        int expiryMinutes = 0;
+        int.TryParse(_config["TOKEN:EXPIRY"], out expiryMinutes);
 
-        string client_id = _config["CLIENT_ID"];
-        RSA public_key = RSAKeyExtractor.GetPublicKey(_config["PUBLIC_KEY"]);
-        AccessTokenResponse success_response = new();
-        APIBaseResponse response = new();
+        string? clientId = _config["CLIENT_ID"];
+        RSA publicKey = RsaKeyExtractor.GetPublicKey(_config["PUBLIC_KEY"]);
+        AccessTokenResponse successResponse = new();
+        ApiBaseResponse response = new();
 
         response.responseCode = "4012400";
         response.responseMessage = "Unauthorized Signature";
-        if (client_id == headers.X_CLIENT_KEY)
+        if (clientId == headers.xClientKey)
         {
 
-            string tosign = string.Concat(client_id, "|", headers.X_TIMESTAMP);
+            string tosign = string.Concat(clientId, "|", headers.xTimestamp);
 
             if (true)
-            // if (SignatureVerifier.VerifySignatureSHA256(tosign, public_key, headers.X_SIGNATURE))
+                // if (SignatureVerifier.VerifySignatureSHA256(tosign, public_key, headers.X_SIGNATURE))
             {
 
-                token = _jwtTokenGeneratorService.GenerateJwtToken(expiry_minutes);
-                success_response.accessToken = token;
-                success_response.responseCode = "2000100";
-                success_response.responseMessage = "Successful";
-                success_response.tokenType = "Bearer";
-                success_response.expiresIn = (expiry_minutes * 60).ToString();
+                token = _jwtTokenGeneratorService.GenerateJwtToken(expiryMinutes);
+                successResponse.accessToken = token;
+                successResponse.responseCode = "2000100";
+                successResponse.responseMessage = "Successful";
+                successResponse.tokenType = "Bearer";
+                successResponse.expiresIn = (expiryMinutes * 60).ToString();
                 ok = true;
             }
             else
@@ -59,29 +57,30 @@ public class AccessTokenController : ControllerBase
                 response.responseMessage = "Unauthorized Signature";
             }
         }
-        return ok ? Ok(success_response) : BadRequest(response);
+        return ok ? Ok(successResponse) : BadRequest(response);
 
     }
-    [HttpPost("[action]")]
+    
+    [HttpPost("")]
     public IActionResult GetB2BSignature()
     {
-        HTTPHeader headers = RequestHeaderHelper.GetHeader(Request);
-        string client_id = _config["CLIENT_ID"];
-        RSA public_key = RSAKeyExtractor.GetPublicKey(_config["PUBLIC_KEY"]);
-        RSA PRIVATE_KEY = RSAKeyExtractor.GetPrivateKey(_config["PRIVATE_KEY"]);
-        string tosign = string.Concat(client_id, "|", headers.X_TIMESTAMP);
-        return Ok(SignatureVerifier.CreateSignatureSHA256(tosign, PRIVATE_KEY));
+        HttpHeader headers = RequestHeaderHelper.GetHeader(Request);
+        string clientId = _config["CLIENT_ID"];
+        RSA publicKey = RsaKeyExtractor.GetPublicKey(_config["PUBLIC_KEY"]);
+        RSA privateKey = RsaKeyExtractor.GetPrivateKey(_config["PRIVATE_KEY"]);
+        string tosign = string.Concat(clientId, "|", headers.xTimestamp);
+        return Ok(SignatureVerifier.CreateSignatureSha256(tosign, privateKey));
     }
 
-    [HttpPost("[action]")]
+    [HttpPost("")]
     public IActionResult VerifyB2BSignature()
     {
-        HTTPHeader headers = RequestHeaderHelper.GetHeader(Request);
-        string client_id = _config["CLIENT_ID"];
-        RSA public_key = RSAKeyExtractor.GetPublicKey(_config["PUBLIC_KEY"]);
-        RSA PRIVATE_KEY = RSAKeyExtractor.GetPrivateKey(_config["PRIVATE_KEY"]);
-        string tosign = string.Concat(client_id, "|", headers.X_TIMESTAMP);
-        string signeddata = SignatureVerifier.CreateSignatureSHA256(tosign, PRIVATE_KEY);
-        return Ok(new { OK = SignatureVerifier.VerifySignatureSHA256(tosign, public_key, signeddata), SignedData = signeddata });
+        HttpHeader headers = RequestHeaderHelper.GetHeader(Request);
+        string? clientId = _config["CLIENT_ID"];
+        RSA publicKey = RsaKeyExtractor.GetPublicKey(_config["PUBLIC_KEY"]);
+        RSA privateKey = RsaKeyExtractor.GetPrivateKey(_config["PRIVATE_KEY"]);
+        string tosign = string.Concat(clientId, "|", headers.xTimestamp);
+        string signeddata = SignatureVerifier.CreateSignatureSha256(tosign, privateKey);
+        return Ok(new { OK = SignatureVerifier.VerifySignatureSha256(tosign, publicKey, signeddata), SignedData = signeddata });
     }
 }

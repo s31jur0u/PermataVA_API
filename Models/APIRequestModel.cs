@@ -5,7 +5,7 @@ public class B2BRequest()
     public string grantType { get; set; }
     public object additionalInfo { get; set; }
 }
-public class VAInquiryRequest()
+public class VaInquiryRequest()
 {
     [Required]
     public string partnerServiceId { get; set; }
@@ -19,7 +19,7 @@ public class VAInquiryRequest()
 }
 
 
-public class VAPaymentRequest(): VAPaymentBase
+public class VaPaymentRequest(): VaPaymentBase
 {
     public int channelCode { get; set; }
     public string hashedSourceAccountNo { get; set; }    

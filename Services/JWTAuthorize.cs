@@ -60,7 +60,7 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
         catch (Exception ex)
         {
             logger.LogError(ex, "Error validating JWT token.");
-            APIBaseResponse response = new(){
+            ApiBaseResponse response = new(){
                 responseCode="4012401",
                 responseMessage="Unauthorized"
             };

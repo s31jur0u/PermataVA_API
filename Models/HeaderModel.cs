@@ -1,9 +1,9 @@
-public class HTTPHeader()
+public class HttpHeader()
 {
-    public string X_TIMESTAMP { get; set; }
-    public string X_CLIENT_KEY { get; set;}
-    public string X_SIGNATURE { get; set;}
-    public string X_PARTNER_ID { get; set;}
-    public string X_EXTERNAL_ID { get; set;}
-    public string CHANNEL_ID { get; set;}
+    public string xTimestamp { get; set; }
+    public string xClientKey { get; set;}
+    public string xSignature { get; set;}
+    public string xPartnerId { get; set;}
+    public string xExternalId { get; set;}
+    public string channelId { get; set;}
 }

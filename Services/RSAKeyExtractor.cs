@@ -3,9 +3,9 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
-public class RSAKeyExtractor
+public class RsaKeyExtractor
 {
-    public static RSA GetPrivateKey(string pemFilePath)
+    public static RSA GetPrivateKey(string? pemFilePath)
     {
         var pemContent = File.ReadAllText(pemFilePath);
         return GetPrivateKeyFromPemContent(pemContent);
@@ -25,7 +25,7 @@ public class RSAKeyExtractor
     }
 
 
-    public static RSA GetPublicKey(string pemFilePath)
+    public static RSA GetPublicKey(string? pemFilePath)
     {
         var pemContent = File.ReadAllText(pemFilePath);
         return GetPublicKeyFromPemContent(pemContent);

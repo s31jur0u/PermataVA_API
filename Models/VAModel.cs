@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-public class VAData()
+public class VaData()
 {
     public string inquiryStatus { get; set; }
     public string partnerServiceId { get; set; }
@@ -9,11 +9,11 @@ public class VAData()
 
     public string virtualAccountName { get; set; }
     public string inquiryRequestId { get; set; }
-    public VATotalAmount totalAmount { get; set; }
+    public VaTotalAmount totalAmount { get; set; }
     public AdditionalInfo additionalInfo { get; set; }
 }
 
-public class VATotalAmount()
+public class VaTotalAmount()
 {
     [Required]
         public string value { get; set; }
@@ -31,7 +31,7 @@ public class AdditionalInfo2() :AdditionalInfo
     public string sourceAccountName{ get; set; }
 }
 
-public class VAPaymentBase()
+public class VaPaymentBase()
 {
     [Required]    
     public string partnerServiceId { get; set; }
@@ -42,6 +42,6 @@ public class VAPaymentBase()
     [Required]    
     public string paymentRequestId { get; set; }
     public string virtualAccountName { get; set; }
-    public VATotalAmount paidAmount { get; set; }
-    public VATotalAmount totalAmount { get; set; }
+    public VaTotalAmount paidAmount { get; set; }
+    public VaTotalAmount totalAmount { get; set; }
 }

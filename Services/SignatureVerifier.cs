@@ -3,7 +3,7 @@ using System.Text;
 
 public class SignatureVerifier
 {
-    public static bool VerifySignatureSHA256(string data, RSA publicKey, string signature)
+    public static bool VerifySignatureSha256(string data, RSA publicKey, string signature)
     {
         // Convert the data to a byte array
         byte[] dataBytes = Encoding.UTF8.GetBytes(data);
@@ -16,13 +16,13 @@ public class SignatureVerifier
 
     }
 
-    public static string CreateSignatureSHA256(string data, RSA rsa)
+    public static string CreateSignatureSha256(string data, RSA rsa)
     {
         byte[] dataBytes = Encoding.UTF8.GetBytes(data);
         byte[] signedBytes = rsa.SignData(dataBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         return Convert.ToBase64String(signedBytes);
     }
-    public static bool VerifyHmacSHA512(string data, string receivedHmac, string secretKey)
+    public static bool VerifyHmacSha512(string data, string receivedHmac, string secretKey)
     {
         byte[] receivedHmacBytes = Convert.FromBase64String(receivedHmac);
         byte[] secretKeyBytes = Encoding.UTF8.GetBytes(secretKey);
@@ -38,7 +38,7 @@ public class SignatureVerifier
             return ByteArraysEqual(computedHmac, receivedHmacBytes);
         }
     }
-    public static string CreateHmacSHA512(string data, string secretKey)
+    public static string CreateHmacSha512(string data, string secretKey)
     {
         byte[] secretKeyBytes = Encoding.UTF8.GetBytes(secretKey);
         // Convert the data and secret key to byte arrays

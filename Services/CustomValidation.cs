@@ -23,7 +23,7 @@ public class ValidateModelAttribute : ActionFilterAttribute
                 Detail = "See the errors property for details."
             };
 
-APIBaseResponse response = new(){
+ApiBaseResponse response = new(){
     responseCode = "4002400",
     responseMessage = string.Join(Environment.NewLine, errors)
 };

@@ -6,7 +6,7 @@ using System.Text;
 
 public interface IJwtTokenGeneratorService
 {
-    string GenerateJwtToken(int expiry_minutes);
+    string GenerateJwtToken(int expiryMinutes);
 }
 
 public class JwtTokenGeneratorService : IJwtTokenGeneratorService
@@ -21,18 +21,18 @@ public class JwtTokenGeneratorService : IJwtTokenGeneratorService
         _configuration = configuration;
     }
 
-    public string GenerateJwtToken(int expiry_minutes)
+    public string GenerateJwtToken(int expiryMinutes)
     {
-        string client_id = _configuration["CLIENT_ID"];
+        string clientId = _configuration["CLIENT_ID"];
         var tokenHandler = new JwtSecurityTokenHandler();
         var tokenDescriptor = new SecurityTokenDescriptor
         {
             Subject = new ClaimsIdentity(new[]
             {
-                new Claim("CLIENT_ID", client_id)
+                new Claim("CLIENT_ID", clientId)
                 // Add more claims as needed
             }),
-            Expires = DateTime.UtcNow.AddMinutes(expiry_minutes), // Token expiration time
+            Expires = DateTime.UtcNow.AddMinutes(expiryMinutes), // Token expiration time
             SigningCredentials = new SigningCredentials(_securityKey, SecurityAlgorithms.HmacSha512Signature)
         };
 

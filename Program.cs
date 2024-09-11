@@ -5,22 +5,23 @@ using Microsoft.IdentityModel.Tokens;
 var builder = WebApplication.CreateBuilder(args);
 // Load configuration from appsettings.json
 
-string token_secret= builder.Configuration.GetValue<string>("TOKEN:SECRET");
+string? tokenSecret= builder.Configuration.GetValue<string>("TOKEN:SECRET");
 // Register the SqlConnectionFactory with a Scoped lifetime
 builder.Services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
 
 // Register the security key (example)
 
-    builder.Services.AddSingleton<SecurityKey>(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(token_secret)));
+if (tokenSecret != null)
+    builder.Services.AddSingleton<SecurityKey>(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(tokenSecret)));
 
 
-    // Register the JWT token generator service
+// Register the JWT token generator service
     builder.Services.AddScoped<IJwtTokenGeneratorService, JwtTokenGeneratorService>();
 
  builder.Services.AddCors(options =>
     {
         options.AddPolicy("AllowAllOrigin",
-            builder => builder.AllowAnyOrigin()
+            corsPolicyBuilder => corsPolicyBuilder.AllowAnyOrigin()
                               .AllowAnyHeader()
                               .AllowAnyMethod());
     });

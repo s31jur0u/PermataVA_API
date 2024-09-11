@@ -1,45 +1,42 @@
-using Azure.Core;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
-using Microsoft.VisualBasic;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Encodings.Web;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Newtonsoft.Json;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
+using Newtonsoft.Json;
 
+namespace VA_API.Controllers.V1._0;
 
-[Route("v1.0/transfer-va")]
- [JwtAuthorize]
-public class TransferVAController : ControllerBase
+[Route("v1.0/transfer-va/[action]")]
+[JwtAuthorize]
+public class TransferVaController : ControllerBase
 {
     private readonly IJwtTokenGeneratorService _jwtTokenGeneratorService;
     private readonly IConfiguration _config;
     private readonly ISqlConnectionFactory _sqlConnectionFactory;
-    public TransferVAController(IJwtTokenGeneratorService jwtTokenGeneratorService, IConfiguration config, ISqlConnectionFactory sqlConnectionFactory)
+    public TransferVaController(IJwtTokenGeneratorService jwtTokenGeneratorService, IConfiguration config, ISqlConnectionFactory sqlConnectionFactory)
     {
         _jwtTokenGeneratorService = jwtTokenGeneratorService;
         _config = config;
         _sqlConnectionFactory = sqlConnectionFactory;
     }
-    [HttpPost("[action]")]
-    public IActionResult Inquiry([FromBody] VAInquiryRequest request)
+    [HttpPost("")]
+    public IActionResult Inquiry([FromBody] VaInquiryRequest request)
     {
         bool ok = false;
         decimal billtotalAmount = 0;
-        string va_name = string.Empty;
-        int max_id = 0;
+        string vaName = string.Empty;
+        int maxId = 0;
 
-        HTTPHeader header = new();
+        HttpHeader header = new();
 
-        APIBaseResponse failed_response = new();
-        failed_response.responseCode = "4002401";
-        failed_response.responseMessage = "Failed";
+        ApiBaseResponse failedResponse = new();
+        failedResponse.responseCode = "4002401";
+        failedResponse.responseMessage = "Failed";
         string body = string.Empty;
-        VAInquiryResponse response = new();
-        VAData vadata = new();
+        VaInquiryResponse response = new();
+        VaData vadata = new();
 
         try
         {
@@ -63,9 +60,9 @@ public class TransferVAController : ControllerBase
                         cmd.Parameters.AddWithValue("@BIN_CD", request.partnerServiceId);
 
                         SqlDataReader reader = cmd.ExecuteReader();
-                        bool got_rows = reader.HasRows;
+                        bool gotRows = reader.HasRows;
                         reader.Close();
-                        if (got_rows)
+                        if (gotRows)
                         {
                             cmd = new SqlCommand("EXEC USPPA_GET_BILLVA @COMPANY_CODE,@CUSTOMER_NUMBER,@TRACE_NO ", sqlconn);
                             cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId);
@@ -79,31 +76,31 @@ public class TransferVAController : ControllerBase
                             while (reader.Read())
                             {
                                 billtotalAmount = billtotalAmount + reader.GetDecimal(0);
-                                va_name = reader.GetString(1);
-                                max_id = reader.GetInt32(2);
+                                vaName = reader.GetString(1);
+                                maxId = reader.GetInt32(2);
                             }
                         }
                         else
                         {
-                            failed_response.responseCode = "4042412";
-                            failed_response.responseMessage = "Bill Not Found";
+                            failedResponse.responseCode = "4042412";
+                            failedResponse.responseMessage = "Bill Not Found";
                             throw new Exception("No Record Found");
                         }
                     }
 
 
-                    VATotalAmount totalAmount = new();
+                    VaTotalAmount totalAmount = new();
                     AdditionalInfo additionalInfo = new();
                     totalAmount.currency = "IDR";
                     totalAmount.value = billtotalAmount.ToString("#0.00");
-                    additionalInfo.transactionId = max_id.ToString();
+                    additionalInfo.transactionId = maxId.ToString();
 
                     vadata.totalAmount = totalAmount;
                     vadata.additionalInfo = additionalInfo;
                     response.responseCode = "2002400";
                     response.responseMessage = "Success";
                     vadata.inquiryStatus = "00";
-                    vadata.virtualAccountName = va_name;
+                    vadata.virtualAccountName = vaName;
 
                     response.virtualAccountData = vadata;
 
@@ -113,17 +110,17 @@ public class TransferVAController : ControllerBase
 
                     ok = false;
                     var errors = ModelState.Values.SelectMany(v => v.Errors)
-                                     .Select(e => e.ErrorMessage)
-                                     .ToList();
-                    failed_response.responseMessage = string.Join(", ", errors);
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    failedResponse.responseMessage = string.Join(", ", errors);
                 }
             }
             else
             {
 
                 ok = false;
-                failed_response.responseCode = "4012400";
-                failed_response.responseMessage = "Unauhtorized Signature";
+                failedResponse.responseCode = "4012400";
+                failedResponse.responseMessage = "Unauhtorized Signature";
             }
         }
         catch (Exception ex)
@@ -131,21 +128,21 @@ public class TransferVAController : ControllerBase
             ok = false;
 
         }
-        return ok ? Ok(response) : BadRequest(failed_response);
+        return ok ? Ok(response) : BadRequest(failedResponse);
     }
 
-    [HttpPost("[action]")]
+    [HttpPost("")]
 
-    public IActionResult Payment([FromBody] VAPaymentRequest request)
+    public IActionResult Payment([FromBody] VaPaymentRequest request)
     {
         bool ok = false;
-        HTTPHeader header = new();
+        HttpHeader header = new();
         string body = string.Empty;
-        VAPaymentResponse response = new();
-        VAPaymentBase vAPaymentBase = new();
-        APIBaseResponse failed_response = new();
-        failed_response.responseCode = "4002401";
-        failed_response.responseMessage = "Failed";
+        VaPaymentResponse response = new();
+        VaPaymentBase vAPaymentBase = new();
+        ApiBaseResponse failedResponse = new();
+        failedResponse.responseCode = "4002401";
+        failedResponse.responseMessage = "Failed";
         try
         {
             // ok = VerifySignature(Request, body);
@@ -163,8 +160,8 @@ public class TransferVAController : ControllerBase
 
                     if(Decimal.TryParse(vAPaymentBase.totalAmount.value, out decimal totalAmount) || Decimal.TryParse(vAPaymentBase.paidAmount.value, out decimal paidAmount))
                     {
-                        failed_response.responseCode ="4042413";
-                        failed_response.responseMessage = "Invalid Amount";
+                        failedResponse.responseCode ="4042413";
+                        failedResponse.responseMessage = "Invalid Amount";
                     }
                     SqlCommand cmd = new();
                     // using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
@@ -172,10 +169,10 @@ public class TransferVAController : ControllerBase
                     // cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
                     // SqlDataReader reader = cmd.ExecuteReader();
 
-                    bool got_rows = true;
+                    bool gotRows = true;
                     // got_rows = reader.HasRows;
                     // reader.Close();
-                    if (got_rows)
+                    if (gotRows)
                     {
 
                         // cmd = new SqlCommand("EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ", sqlconn);
@@ -203,16 +200,16 @@ public class TransferVAController : ControllerBase
                 {
                     ok = false;
                     var errors = ModelState.Values.SelectMany(v => v.Errors)
-                                          .Select(e => e.ErrorMessage)
-                                          .ToList();
-                    failed_response.responseMessage = string.Join(", ", errors);
+                        .Select(e => e.ErrorMessage)
+                        .ToList();
+                    failedResponse.responseMessage = string.Join(", ", errors);
                 }
             }
             else
             {
                 ok = false;
-                failed_response.responseCode = "4012400";
-                failed_response.responseMessage = "Unauhtorized Signature";
+                failedResponse.responseCode = "4012400";
+                failedResponse.responseMessage = "Unauhtorized Signature";
             }
 
         }
@@ -222,14 +219,14 @@ public class TransferVAController : ControllerBase
         }
 
 
-        return ok ? Ok(response) : Ok(failed_response);
+        return ok ? Ok(response) : Ok(failedResponse);
     }
 
-    [HttpPost("[action]")]
+    [HttpPost("")]
     [AllowAnonymous]
-    public IActionResult GetPaymentSignature(VAPaymentRequest request)
+    public IActionResult GetPaymentSignature(VaPaymentRequest request)
     {
-        HTTPHeader header = new();
+        HttpHeader header = new();
         header = RequestHeaderHelper.GetHeader(Request);
         string body = JsonConvert.SerializeObject(request);
         string signature = CreateSignature(Request, body);
@@ -237,10 +234,10 @@ public class TransferVAController : ControllerBase
 
     }
 
-    [HttpPost("[action]")]
-    public IActionResult GetInquirySignature(VAInquiryRequest request)
+    [HttpPost("")]
+    public IActionResult GetInquirySignature(VaInquiryRequest request)
     {
-        HTTPHeader header = new();
+        HttpHeader header = new();
         header = RequestHeaderHelper.GetHeader(Request);
         string body = JsonConvert.SerializeObject(request);
         string signature = CreateSignature(Request, body);
@@ -248,9 +245,9 @@ public class TransferVAController : ControllerBase
 
     }
 
-        [HttpPost("[action]")]
+    [HttpPost("")]
     [AllowAnonymous]
-    public IActionResult VerifyInquirySignature(VAInquiryRequest request)
+    public IActionResult VerifyInquirySignature(VaInquiryRequest request)
     {
 
         string body = JsonConvert.SerializeObject(request);
@@ -258,36 +255,36 @@ public class TransferVAController : ControllerBase
         return Ok(new{Ok = verified});
 
     }
-    private string CreateSignature(HttpRequest request, string request_body)
+    private string CreateSignature(HttpRequest request, string requestBody)
     {
         string signature = "";
-        string client_id = UserHelper.GetClaimValue(User, "CLIENT_ID");
-        HTTPHeader headers = RequestHeaderHelper.GetHeader(request);
-        string http_method = request.Method;
+        string clientId = UserHelper.GetClaimValue(User, "CLIENT_ID");
+        HttpHeader headers = RequestHeaderHelper.GetHeader(request);
+        string httpMethod = request.Method;
         string endpoint = request.Path;
-        var token_headers = request.Headers["Authorization"].FirstOrDefault();
-        string token = token_headers.Split(' ').LastOrDefault();
-        string hexbody = GetHexSHA256(request_body);
-        string tosing = string.Concat(http_method, ":", endpoint, ":", token, ":", hexbody, ":", headers.X_TIMESTAMP);
-        signature = SignatureVerifier.CreateHmacSHA512(tosing, client_id);
+        var tokenHeaders = request.Headers["Authorization"].FirstOrDefault();
+        string token = tokenHeaders.Split(' ').LastOrDefault();
+        string hexbody = GetHexSha256(requestBody);
+        string tosing = string.Concat(httpMethod, ":", endpoint, ":", token, ":", hexbody, ":", headers.xTimestamp);
+        signature = SignatureVerifier.CreateHmacSha512(tosing, clientId);
         return signature;
     }
-    private bool VerifySignature(HttpRequest request, string request_body)
+    private bool VerifySignature(HttpRequest request, string requestBody)
     {
         bool ok = false;
-        string client_id = UserHelper.GetClaimValue(User, "CLIENT_ID");
-        HTTPHeader headers = RequestHeaderHelper.GetHeader(request);
-        string http_method = request.Method;
+        string clientId = UserHelper.GetClaimValue(User, "CLIENT_ID");
+        HttpHeader headers = RequestHeaderHelper.GetHeader(request);
+        string httpMethod = request.Method;
         string endpoint = "/v1.0/transfer-va/GetInquirySignature";
-        var token_headers = request.Headers["Authorization"].FirstOrDefault();
-        string token = token_headers.Split(' ').LastOrDefault();
-        string hexbody = GetHexSHA256(request_body);
-        string tosing = string.Concat(http_method, ":", endpoint, ":", token, ":", hexbody, ":", headers.X_TIMESTAMP);
-        ok = SignatureVerifier.VerifyHmacSHA512(tosing, headers.X_SIGNATURE, client_id);
+        var tokenHeaders = request.Headers["Authorization"].FirstOrDefault();
+        string token = tokenHeaders.Split(' ').LastOrDefault();
+        string hexbody = GetHexSha256(requestBody);
+        string tosing = string.Concat(httpMethod, ":", endpoint, ":", token, ":", hexbody, ":", headers.xTimestamp);
+        ok = SignatureVerifier.VerifyHmacSha512(tosing, headers.xSignature, clientId);
         return ok;
     }
 
-    private string GetHexSHA256(string input)
+    private string GetHexSha256(string input)
     {
         input = MinifyString(input);
         using (SHA256 sha256Hash = SHA256.Create())
