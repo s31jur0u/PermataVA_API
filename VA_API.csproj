@@ -15,4 +15,12 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="Publish\web.config" />
+    <_ContentIncludedByDefault Remove="Publish\appsettings.Development.json" />
+    <_ContentIncludedByDefault Remove="Publish\appsettings.json" />
+    <_ContentIncludedByDefault Remove="Publish\VA_API.deps.json" />
+    <_ContentIncludedByDefault Remove="Publish\VA_API.runtimeconfig.json" />
+  </ItemGroup>
+
 </Project>

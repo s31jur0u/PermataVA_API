@@ -13,16 +13,16 @@ public class VaInquiryRequest()
     public string customerNo { get; set; }
     [Required]
     public string virtualAccountNo { get; set; }
-    public int channelCode { get; set; }
+    // public int channelCode { get; set; }
     [Required]
     public string inquiryRequestId { get; set; }
 }
 
 
-public class VaPaymentRequest(): VaPaymentBase
+public class VaPaymentRequest() : VaPaymentBase
 {
     public int channelCode { get; set; }
-    public string hashedSourceAccountNo { get; set; }    
-public string trxDateTime { get; set; }
-public AdditionalInfo2 additionalInfo {get; set;} 
+    public string hashedSourceAccountNo { get; set; }
+    public string trxDateTime { get; set; }
+    public AdditionalInfo2 additionalInfo { get; set; }
 }

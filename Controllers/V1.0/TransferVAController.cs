@@ -71,8 +71,6 @@ public class TransferVaController : ControllerBase
                     body = JsonConvert.SerializeObject(request);
                     JsonConvert.PopulateObject(body, vadata);
 
-
-
                     using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
                     {
                         SqlCommand cmd =
@@ -318,8 +316,8 @@ public class TransferVaController : ControllerBase
         string httpMethod = request.Method;
 
         // //string endpoint = "https://vah2h.southcity.co.id:4580" + (verifytype.ToLower() == "inquiry"
-         string endpoint =  (verifytype.ToLower() == "inquiry"
-             ? "/v1.0/transfer-va/inquiry"
+        string endpoint = (verifytype.ToLower() == "inquiry"
+            ? "/v1.0/transfer-va/inquiry"
             : "/v1.0/transfer-va/payment");
         var tokenHeaders = request.Headers["Authorization"].FirstOrDefault();
         string token = tokenHeaders.Split(' ').LastOrDefault();
@@ -355,7 +353,7 @@ public class TransferVaController : ControllerBase
         //
         // // Trim leading and trailing whitespace
         // return minified.Trim();
-        
+
         JToken parsedJson = JToken.Parse(input);
         return parsedJson.ToString(Formatting.None); // Minified JSON
     }
