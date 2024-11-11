@@ -18,6 +18,11 @@ public class TransferVaController : ControllerBase
     private readonly IConfiguration _config;
     private readonly ISqlConnectionFactory _sqlConnectionFactory;
 
+    private JsonSerializerSettings jsonSerializerSettings = new JsonSerializerSettings
+    {
+        NullValueHandling = NullValueHandling.Ignore
+    };
+
     private readonly Serilog.Core.Logger _logger;
 
     public TransferVaController(IJwtTokenGeneratorService jwtTokenGeneratorService, IConfiguration config,
@@ -158,7 +163,6 @@ public class TransferVaController : ControllerBase
     }
 
     [HttpPost("")]
-
     public IActionResult Payment([FromBody] VaPaymentRequest request)
     {
         bool ok = false;
@@ -169,6 +173,9 @@ public class TransferVaController : ControllerBase
         ApiBaseResponse failedResponse = new();
         failedResponse.responseCode = "4002401";
         failedResponse.responseMessage = "Failed";
+        body = JsonConvert.SerializeObject(request, jsonSerializerSettings);
+        _logger.Information("payment");
+
         try
         {
             ok = true;
@@ -183,12 +190,11 @@ public class TransferVaController : ControllerBase
 
                     header = RequestHeaderHelper.GetHeader(Request);
 
-                    body = JsonConvert.SerializeObject(request);
 
                     JsonConvert.PopulateObject(JsonConvert.SerializeObject(request), vAPaymentBase);
 
-                    if (Decimal.TryParse(vAPaymentBase.totalAmount.value, out decimal totalAmount) ||
-                        Decimal.TryParse(vAPaymentBase.paidAmount.value, out decimal paidAmount))
+                    if (!Decimal.TryParse(vAPaymentBase.totalAmount.value, out decimal totalAmount) ||
+                        !Decimal.TryParse(vAPaymentBase.paidAmount.value, out decimal paidAmount))
                     {
                         failedResponse.responseCode = "4042413";
                         failedResponse.responseMessage = "Invalid Amount";
@@ -201,19 +207,25 @@ public class TransferVaController : ControllerBase
                         sqlconn);
                     cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
                     SqlDataReader reader = cmd.ExecuteReader();
-
+                    string customername = string.Empty; 
                     bool gotRows = true;
-                    // got_rows = reader.HasRows;
-                    // reader.Close();
+                    gotRows = reader.HasRows;
+                    while (reader.Read())
+                    {
+                         customername = reader.GetString(1);
+
+                    }
+                    reader.Close();
                     if (gotRows)
                     {
+                        _logger.Information("got rows");
 
                         cmd = new SqlCommand(
                             "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
                             sqlconn);
-                        cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId);
+                        cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
                         cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
-                        cmd.Parameters.AddWithValue("@CUSTOMER_NAME", request.virtualAccountName);
+                        cmd.Parameters.AddWithValue("@CUSTOMER_NAME", customername);
                         cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
                         cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.totalAmount.value);
                         cmd.ExecuteReader();
@@ -250,8 +262,11 @@ public class TransferVaController : ControllerBase
             }
 
         }
-        catch (System.Exception)
+        catch (Exception ex)
         {
+            _logger.Information(ex.Message);
+            _logger.Information(ex.InnerException?.Message ?? ex.Message);
+
             ok = false;
         }
 
