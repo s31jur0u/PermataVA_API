@@ -171,7 +171,7 @@ public class TransferVaController : ControllerBase
         VaPaymentResponse response = new();
         VaPaymentBase vAPaymentBase = new();
         ApiBaseResponse failedResponse = new();
-        failedResponse.responseCode = "4002401";
+        failedResponse.responseCode = "4002501";
         failedResponse.responseMessage = "Failed";
         body = JsonConvert.SerializeObject(request, jsonSerializerSettings);
         _logger.Information("payment");
@@ -196,7 +196,7 @@ public class TransferVaController : ControllerBase
                     if (!Decimal.TryParse(vAPaymentBase.totalAmount.value, out decimal totalAmount) ||
                         !Decimal.TryParse(vAPaymentBase.paidAmount.value, out decimal paidAmount))
                     {
-                        failedResponse.responseCode = "4042413";
+                        failedResponse.responseCode = "4042513";
                         failedResponse.responseMessage = "Invalid Amount";
                     }
 
@@ -219,23 +219,40 @@ public class TransferVaController : ControllerBase
                     if (gotRows)
                     {
                         _logger.Information("got rows");
+                        try
+                        {
 
-                        cmd = new SqlCommand(
-                            "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
-                            sqlconn);
-                        cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
-                        cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
-                        cmd.Parameters.AddWithValue("@CUSTOMER_NAME", customername);
-                        cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
-                        cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.totalAmount.value);
-                        cmd.ExecuteReader();
+                            cmd = new SqlCommand(
+                                "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
+                                sqlconn);
+                            cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
+                            cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
+                            cmd.Parameters.AddWithValue("@CUSTOMER_NAME", customername);
+                            cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
+                            cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.totalAmount.value);
+                            SqlDataReader sp_reader = cmd.ExecuteReader();
 
-                        response.responseCode = "2002400";
-                        response.responseMessage = "Success";
+                            string errorcode = string.Empty;
+                            while (sp_reader.Read())
+                            {
+                                 errorcode = sp_reader.GetString(0);
+                            }
 
-                        response.virtualAccountData = vAPaymentBase;
+                            if (errorcode == "00")
+                            {
+                                response.responseCode = "2002500";
+                                response.responseMessage = "Success";
 
-                        return Ok(response);
+                                response.virtualAccountData = vAPaymentBase;
+                            }
+
+                            ok = true;
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e);
+                            ok = false;
+                        }
 
                     }
                     else
@@ -257,7 +274,7 @@ public class TransferVaController : ControllerBase
             else
             {
                 ok = false;
-                failedResponse.responseCode = "4012400";
+                failedResponse.responseCode = "4012500";
                 failedResponse.responseMessage = "Unauhtorized Signature";
             }
 
