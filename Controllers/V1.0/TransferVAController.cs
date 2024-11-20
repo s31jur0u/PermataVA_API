@@ -78,42 +78,70 @@ public class TransferVaController : ControllerBase
 
                     using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
                     {
-                        SqlCommand cmd =
-                            new SqlCommand(
-                                "SELECT top 1 name FROM  VW_PA_UPLOAD2 WHERE VA_CD= @VA_CD AND BIN_CD = @BIN_CD",
-                                sqlconn);
 
-                        cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
-                        cmd.Parameters.AddWithValue("@BIN_CD", request.partnerServiceId.Trim());
-
-                        SqlDataReader reader = cmd.ExecuteReader();
-                        bool gotRows = reader.HasRows;
-                        reader.Close();
-                        if (gotRows)
+                        if (CheckVAExists(request.virtualAccountNo))
                         {
-                            cmd = new SqlCommand("EXEC USPPA_GET_BILLVA @COMPANY_CODE,@CUSTOMER_NUMBER,@TRACE_NO ",
-                                sqlconn);
-                            cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
-                            cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
-                            cmd.Parameters.AddWithValue("@TRACE_NO", string.Empty);
-                            cmd.ExecuteNonQuery();
 
-                            cmd = new SqlCommand(
-                                "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
-                                sqlconn);
-                            cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
-                            reader = cmd.ExecuteReader();
-                            while (reader.Read())
+
+
+                            SqlCommand cmd = new();
+                            SqlDataReader reader;
+                            if (CheckGotBill(request.virtualAccountNo))
                             {
-                                billtotalAmount = billtotalAmount + reader.GetDecimal(0);
-                                vaName = reader.GetString(1);
-                                maxId = reader.GetInt32(2);
+                                cmd = new SqlCommand("EXEC USPPA_GET_BILLVA @COMPANY_CODE,@CUSTOMER_NUMBER,@TRACE_NO ",
+                                    sqlconn);
+                                cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
+                                cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
+                                cmd.Parameters.AddWithValue("@TRACE_NO", request.inquiryRequestId);
+                                cmd.ExecuteNonQuery();
+
+                                cmd = new SqlCommand(
+                                    "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
+                                    sqlconn);
+                                cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
+                                reader = cmd.ExecuteReader();
+                                if (reader.HasRows)
+                                {
+                                    while (reader.Read())
+                                    {
+                                        billtotalAmount = billtotalAmount + reader.GetDecimal(0);
+                                        vaName = reader.GetString(1);
+                                        maxId = reader.GetInt32(2);
+                                    }
+                                }
+                                else
+                                {
+                                    cmd = new SqlCommand(
+                                        "SELECT top 1 VACD  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD",
+                                        sqlconn);
+                                    cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
+
+                                    SqlDataReader reader2 = cmd.ExecuteReader();
+                                    bool gotRows2 = false;
+                                    gotRows2 = reader2.HasRows;
+
+                                    reader2.Close();
+
+                                    if (gotRows2)
+                                    {
+                                        failedResponse.responseCode = "4042414";
+                                        failedResponse.responseMessage = "Bill Has Been Paid";
+                                    }
+                                    failedResponse.responseCode = "4042419";
+                                    failedResponse.responseMessage = "Invalid Bill/Virtual Account";
+
+                                    throw new Exception("Bill Has Been Paid");
+
+                                }
+                                
                             }
                         }
                         else
                         {
                             failedResponse.responseCode = "4042412";
                             failedResponse.responseMessage = "Bill Not Found";
+
+
                             throw new Exception("No Record Found");
                         }
                     }
@@ -150,7 +178,7 @@ public class TransferVaController : ControllerBase
 
                 ok = false;
                 failedResponse.responseCode = "4012400";
-                failedResponse.responseMessage = "Unauhtorized Signature";
+                failedResponse.responseMessage = "Unauthorized Signature";
             }
         }
         catch (Exception ex)
@@ -257,7 +285,8 @@ public class TransferVaController : ControllerBase
                     }
                     else
                     {
-                        ok = false;
+                        
+                      ok = false;
                     }
 
 
@@ -275,7 +304,7 @@ public class TransferVaController : ControllerBase
             {
                 ok = false;
                 failedResponse.responseCode = "4012500";
-                failedResponse.responseMessage = "Unauhtorized Signature";
+                failedResponse.responseMessage = "Unauthorized Signature";
             }
 
         }
@@ -388,5 +417,57 @@ public class TransferVaController : ControllerBase
 
         JToken parsedJson = JToken.Parse(input);
         return parsedJson.ToString(Formatting.None); // Minified JSON
+    }
+
+    private bool CheckVAExists(string vaNo)
+    {
+        bool ok = false;
+
+        using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
+        {
+
+
+
+            SqlCommand cmd =
+                new SqlCommand(
+                    "SELECT top 1 * FROM  vwpa_konsumen_va WHERE VA_NO= @VA_CD ",
+                    sqlconn);
+
+            cmd.Parameters.AddWithValue("@VA_CD", vaNo);
+
+            SqlDataReader reader = cmd.ExecuteReader();
+            ok = reader.HasRows;
+            reader.Close();
+        }
+
+        return ok;
+    }
+    
+    private bool CheckGotBill(string vaNo)
+    {
+        bool ok = false;
+
+        try
+        {
+            using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
+            {
+                SqlCommand cmd =
+                    new SqlCommand(
+                        "SELECT top 1 name FROM  VW_PA_UPLOAD2 WHERE VA_CD= @VA_CD",
+                        sqlconn);
+
+                cmd.Parameters.AddWithValue("@VA_CD", vaNo);
+
+                SqlDataReader reader = cmd.ExecuteReader();
+                ok = reader.HasRows;
+                reader.Close();
+            }
+        }
+        catch (Exception e)
+        {
+           
+        }
+
+        return ok;
     }
 }
