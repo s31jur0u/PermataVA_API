@@ -2,6 +2,7 @@
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using VA_API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 // Load configuration from appsettings.json
@@ -47,6 +48,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 app.UseCors("AllowAllOrigin");
+app.UseMiddleware<ApiLoggingMiddleware>();
 
 app.UseHttpsRedirection();
 

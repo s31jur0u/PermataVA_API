@@ -45,7 +45,7 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
                 },
                 ValidateIssuer = false, // Set to true if you want to validate the issuer
                 ValidateAudience = false, // Set to true if you want to validate the audience
-                ValidateLifetime = false
+                ValidateLifetime = true
             };
 
             // Validate the token
