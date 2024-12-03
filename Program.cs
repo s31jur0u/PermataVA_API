@@ -39,6 +39,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 // Konfigurasi Serilog untuk menulis log ke file
 
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -49,6 +50,7 @@ if (app.Environment.IsDevelopment())
 }
 app.UseCors("AllowAllOrigin");
 app.UseMiddleware<ApiLoggingMiddleware>();
+app.UseMiddleware<LicenseValidationMiddleware>();
 
 app.UseHttpsRedirection();
 

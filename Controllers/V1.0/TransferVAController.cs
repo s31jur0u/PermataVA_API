@@ -84,21 +84,18 @@ public class TransferVaController : ControllerBase
 
                     }
                     else
-             
                     {
-                        using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
+                        
+                        if (CheckVAExists(request.virtualAccountNo))
                         {
-
-                            if (CheckVAExists(request.virtualAccountNo))
+                            SqlCommand cmd = new();
+                            SqlDataReader reader;
+                            if (CheckGotBill(request.virtualAccountNo))
                             {
-
-
-
-                                SqlCommand cmd = new();
-                                SqlDataReader reader;
-                                if (CheckGotBill(request.virtualAccountNo))
+                                using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
                                 {
-                                    cmd = new SqlCommand("EXEC USPPA_GET_BILLVA @COMPANY_CODE,@CUSTOMER_NUMBER,@TRACE_NO ",
+                                    cmd = new SqlCommand(
+                                        "EXEC USPPA_GET_BILLVA @COMPANY_CODE,@CUSTOMER_NUMBER,@TRACE_NO ",
                                         sqlconn);
                                     cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
                                     cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
@@ -137,23 +134,28 @@ public class TransferVaController : ControllerBase
                                             failedResponse.responseCode = "4042414";
                                             failedResponse.responseMessage = "Bill Has Been Paid";
                                         }
-                                       
+
                                         throw new Exception("Bill Has Been Paid");
 
                                     }
-                                
+
                                 }
                             }
                             else
                             {
-                                failedResponse.responseCode = "4042412";
-                                failedResponse.responseMessage = "Bill Not Found";
-
-
-                                throw new Exception("No Record Found");
+                                failedResponse.responseCode = "4042414";
+                                failedResponse.responseMessage = "Bill Has Been Paid";
+                                throw new Exception("Bill Has Been Paid");
                             }
                         }
-                        
+                        else
+                        {
+                            failedResponse.responseCode = "4042412";
+                            failedResponse.responseMessage = "Bill Not Found";
+
+
+                            throw new Exception("No Record Found");
+                        }
                     }
 
                     VaTotalAmount totalAmount = new();
@@ -235,11 +237,11 @@ public class TransferVaController : ControllerBase
                     decimal paidAmount = 0;
                     Decimal.TryParse(vAPaymentBase.totalAmount.value, out totalAmount);
                     Decimal.TryParse(vAPaymentBase.paidAmount.value, out paidAmount);
-                   
+
 
                     if (CheckVAExists(request.virtualAccountNo))
                     {
-                        
+
                         SqlCommand cmd = new();
                         using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
                         cmd = new SqlCommand(
@@ -266,8 +268,10 @@ public class TransferVaController : ControllerBase
                             {
                                 failedResponse.responseCode = "4042513";
                                 failedResponse.responseMessage = "Invalid Amount";
-                            }
+                                ok = false;
 
+                            }
+                            else
                             {
                                 try
                                 {
