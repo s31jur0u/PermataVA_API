@@ -1,4 +1,5 @@
 using System;
+using System.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 
@@ -19,6 +20,15 @@ public class SqlConnectionFactory : ISqlConnectionFactory, IDisposable
             _connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
             _connection.Open();
         }
+
+        if (_connection.State != ConnectionState.Open)
+        {
+            _connection = new SqlConnection(_configuration.GetConnectionString("DefaultConnection"));
+
+            _connection.Open();
+            
+        }
+        
         return _connection;
     }
 

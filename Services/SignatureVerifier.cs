@@ -29,13 +29,21 @@ public class SignatureVerifier
         // Convert the data and secret key to byte arrays
         byte[] dataBytes = Encoding.UTF8.GetBytes(data);
 
-        using (var hmac = new HMACSHA512(secretKeyBytes))
+        // using (var hmac = new HMACSHA512(secretKeyBytes))
+        // {
+        //     // Compute the HMAC
+        //     byte[] computedHmac = hmac.ComputeHash(dataBytes);
+        //
+        //     // Compare the computed HMAC with the received HMAC
+        //     return ByteArraysEqual(computedHmac, receivedHmacBytes);
+        // }
+        //
+        using (var hmacsha512 = new HMACSHA512(Encoding.UTF8.GetBytes(secretKey)))
         {
-            // Compute the HMAC
-            byte[] computedHmac = hmac.ComputeHash(dataBytes);
+            byte[] hash = hmacsha512.ComputeHash(Encoding.UTF8.GetBytes(data));
+            string tosignhmac = Convert.ToBase64String(hash);
 
-            // Compare the computed HMAC with the received HMAC
-            return ByteArraysEqual(computedHmac, receivedHmacBytes);
+            return tosignhmac == receivedHmac; // Convert to lowercase hex
         }
     }
     public static string CreateHmacSha512(string data, string secretKey)

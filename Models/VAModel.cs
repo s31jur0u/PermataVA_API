@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Newtonsoft.Json;
 
 public class VaData()
 {
@@ -41,6 +42,7 @@ public class VaPaymentBase()
     public string virtualAccountNo { get; set; }
     [Required]    
     public string paymentRequestId { get; set; }
+    [JsonIgnore]
     public string virtualAccountName { get; set; }
     public VaTotalAmount paidAmount { get; set; }
     public VaTotalAmount totalAmount { get; set; }

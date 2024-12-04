@@ -1,11 +1,13 @@
 
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using VA_API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 // Load configuration from appsettings.json
 
-string? tokenSecret= builder.Configuration.GetValue<string>("TOKEN:SECRET");
+string? tokenSecret = builder.Configuration.GetValue<string>("TOKEN:SECRET");
 // Register the SqlConnectionFactory with a Scoped lifetime
 builder.Services.AddScoped<ISqlConnectionFactory, SqlConnectionFactory>();
 
@@ -16,25 +18,27 @@ if (tokenSecret != null)
 
 
 // Register the JWT token generator service
-    builder.Services.AddScoped<IJwtTokenGeneratorService, JwtTokenGeneratorService>();
+builder.Services.AddScoped<IJwtTokenGeneratorService, JwtTokenGeneratorService>();
 
- builder.Services.AddCors(options =>
-    {
-        options.AddPolicy("AllowAllOrigin",
-            corsPolicyBuilder => corsPolicyBuilder.AllowAnyOrigin()
-                              .AllowAnyHeader()
-                              .AllowAnyMethod());
-    });
+builder.Services.AddCors(options =>
+   {
+       options.AddPolicy("AllowAllOrigin",
+           corsPolicyBuilder => corsPolicyBuilder.AllowAnyOrigin()
+                             .AllowAnyHeader()
+                             .AllowAnyMethod());
+   });
 
-    builder.Services.AddControllers(options =>
-    {
+builder.Services.AddControllers(options =>
+{
 
-        // options.Filters.Add<JwtAuthorizeAttribute>(); // Add the custom authorize filter globally
-    });
+    // options.Filters.Add<JwtAuthorizeAttribute>(); // Add the custom authorize filter globally
+});
 // Add services to the container.
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+// Konfigurasi Serilog untuk menulis log ke file
+
 
 var app = builder.Build();
 
@@ -44,7 +48,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-    app.UseCors("AllowAllOrigin");
+app.UseCors("AllowAllOrigin");
+app.UseMiddleware<ApiLoggingMiddleware>();
+app.UseMiddleware<LicenseValidationMiddleware>();
 
 app.UseHttpsRedirection();
 
