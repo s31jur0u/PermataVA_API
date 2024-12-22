@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -576,21 +577,25 @@ ApiBaseResponse failedResponse = new();
 
         using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
         SqlCommand sqlCommand = new SqlCommand("Select * From ExternalIdLogs Where ExternalId = @ExternalId", sqlconn);
-        sqlconn.Open();
+        if (sqlconn.State != ConnectionState.Open)
+            sqlconn.Open();
         sqlCommand.Parameters.AddWithValue("@ExternalId", externalid);
 
         SqlDataReader reader = sqlCommand.ExecuteReader();
-        if (!reader.HasRows)
+        bool gotdata = true;
+   gotdata = reader.HasRows;
+        reader.Close();
+
+        if (!gotdata)
         {
             sqlCommand =
-                new SqlCommand("insert into ExternalIdLogs (ExternalId,IsDuplicate) values (@ExternalId,false)",
+                new SqlCommand("insert into ExternalIdLogs (ExternalId,IsDuplicate) values (@ExternalId,0)",
                     sqlconn);
             sqlCommand.Parameters.AddWithValue("@ExternalId", externalid);
 
             sqlCommand.ExecuteNonQuery();
             isvalid = true;
         }
-
         sqlconn.Close();
 
 
@@ -608,7 +613,7 @@ ApiBaseResponse failedResponse = new();
             _ => "00"
         };
 
-        conflict_resp.responseCode.Replace("XX", actioncode);
+        conflict_resp.responseCode=  conflict_resp.responseCode.Replace("XX", actioncode);
         return isvalid;
 
     }
