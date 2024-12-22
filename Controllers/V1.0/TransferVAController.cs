@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -16,7 +17,7 @@ public class TransferVaController : ControllerBase
 {
     private readonly IJwtTokenGeneratorService _jwtTokenGeneratorService;
     private readonly IConfiguration _config;
-    private readonly ISqlConnectionFactory _sqlConnectionFactory;
+    private static ISqlConnectionFactory _sqlConnectionFactory;
 
     private JsonSerializerSettings jsonSerializerSettings = new JsonSerializerSettings
     {
@@ -34,6 +35,7 @@ public class TransferVaController : ControllerBase
         _config = config;
         _sqlConnectionFactory = sqlConnectionFactory;
     }
+
 
     [HttpPost("")]
     public IActionResult Inquiry([FromBody] VaInquiryRequest request)
@@ -61,144 +63,205 @@ public class TransferVaController : ControllerBase
 
         _logger.Information(headerstring);
         _logger.Information(body);
-        try
+        
+        
+        if(CheckExternalId(header.xExternalId, "inquiry",out failedResponse))
         {
-            ok = true;
-            bool need_verify = false;
-            bool.TryParse(_config["VERIFY_SIGNATURE:INQUIRY"], out need_verify);
-            if (need_verify)
-                ok = VerifySignature(Request, body, "inquiry");
-            if (ok)
+            try
             {
-                if (ModelState.IsValid)
+                ok = true;
+                bool need_verify = false;
+                bool.TryParse(_config["VERIFY_SIGNATURE:INQUIRY"], out need_verify);
+                if (need_verify)
+                    ok = VerifySignature(Request, body, "inquiry");
+                if (ok)
                 {
-                    header = RequestHeaderHelper.GetHeader(Request);
-                    body = JsonConvert.SerializeObject(request);
-                    JsonConvert.PopulateObject(body, vadata);
-
-                    if (_config["EXPIRED_VA"] == request.virtualAccountNo)
+                    if (ModelState.IsValid)
                     {
-                        failedResponse.responseCode = "4042419";
-                        failedResponse.responseMessage = "Invalid Bill/Virtual Account";
-                        throw new Exception("Invalid Bill/Virtual Account");
+                        header = RequestHeaderHelper.GetHeader(Request);
+                        body = JsonConvert.SerializeObject(request);
+                        JsonConvert.PopulateObject(body, vadata);
 
-                    }
-                    else
-                    {
-                        
-                        if (CheckVAExists(request.virtualAccountNo))
+                        if (_config["EXPIRED_VA"] == request.virtualAccountNo)
                         {
-                            SqlCommand cmd = new();
-                            SqlDataReader reader;
-                            if (CheckGotBill(request.virtualAccountNo))
-                            {
-                                using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
-                                {
-                                    cmd = new SqlCommand(
-                                        "EXEC USPPA_GET_BILLVA @COMPANY_CODE,@CUSTOMER_NUMBER,@TRACE_NO ",
-                                        sqlconn);
-                                    cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
-                                    cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
-                                    cmd.Parameters.AddWithValue("@TRACE_NO", request.inquiryRequestId);
-                                    cmd.ExecuteNonQuery();
+                            failedResponse.responseCode = "4042419";
+                            failedResponse.responseMessage = "Invalid Bill/Virtual Account";
+                            throw new Exception("Invalid Bill/Virtual Account");
 
-                                    cmd = new SqlCommand(
-                                        "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
-                                        sqlconn);
-                                    cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
-                                    reader = cmd.ExecuteReader();
-                                    if (reader.HasRows)
-                                    {
-                                        while (reader.Read())
-                                        {
-                                            billtotalAmount = billtotalAmount + reader.GetDecimal(0);
-                                            vaName = reader.GetString(1);
-                                            maxId = reader.GetInt32(2);
-                                        }
-                                    }
-                                    else
+                        }
+                        else
+                        {
+
+                            if (CheckVAExists(request.virtualAccountNo))
+                            {
+                                SqlCommand cmd = new();
+                                SqlDataReader reader;
+                                if (CheckGotBill(request.virtualAccountNo))
+                                {
+                                    using (SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection())
                                     {
                                         cmd = new SqlCommand(
-                                            "SELECT top 1 VACD  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD",
+                                            "EXEC USPPA_GET_BILLVA @COMPANY_CODE,@CUSTOMER_NUMBER,@TRACE_NO ",
+                                            sqlconn);
+                                        cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
+                                        cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
+                                        cmd.Parameters.AddWithValue("@TRACE_NO", request.inquiryRequestId);
+                                        cmd.ExecuteNonQuery();
+
+                                        cmd = new SqlCommand(
+                                            "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
                                             sqlconn);
                                         cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
-
-                                        SqlDataReader reader2 = cmd.ExecuteReader();
-                                        bool gotRows2 = false;
-                                        gotRows2 = reader2.HasRows;
-
-                                        reader2.Close();
-
-                                        if (gotRows2)
+                                        reader = cmd.ExecuteReader();
+                                        if (reader.HasRows)
                                         {
-                                            failedResponse.responseCode = "4042414";
-                                            failedResponse.responseMessage = "Bill Has Been Paid";
+                                            while (reader.Read())
+                                            {
+                                                billtotalAmount = billtotalAmount + reader.GetDecimal(0);
+                                                vaName = reader.GetString(1);
+                                                maxId = reader.GetInt32(2);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            cmd = new SqlCommand(
+                                                "SELECT top 1 VACD  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD",
+                                                sqlconn);
+                                            cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
+
+                                            SqlDataReader reader2 = cmd.ExecuteReader();
+                                            bool gotRows2 = false;
+                                            gotRows2 = reader2.HasRows;
+
+                                            reader2.Close();
+
+                                            if (gotRows2)
+                                            {
+                                                failedResponse.responseCode = "4042414";
+                                                failedResponse.responseMessage = "Bill Has Been Paid";
+                                            }
+
+                                            throw new Exception("Bill Has Been Paid");
+
                                         }
 
-                                        throw new Exception("Bill Has Been Paid");
-
                                     }
-
+                                }
+                                else
+                                {
+                                    failedResponse.responseCode = "4042414";
+                                    failedResponse.responseMessage = "Bill Has Been Paid";
+                                    throw new Exception("Bill Has Been Paid");
                                 }
                             }
                             else
                             {
-                                failedResponse.responseCode = "4042414";
-                                failedResponse.responseMessage = "Bill Has Been Paid";
-                                throw new Exception("Bill Has Been Paid");
+                                failedResponse.responseCode = "4042412";
+                                failedResponse.responseMessage = "Bill Not Found";
+
+
+                                throw new Exception("No Record Found");
                             }
                         }
-                        else
-                        {
-                            failedResponse.responseCode = "4042412";
-                            failedResponse.responseMessage = "Bill Not Found";
 
+                        VaTotalAmount totalAmount = new();
+                        AdditionalInfo additionalInfo = new();
+                        totalAmount.currency = "IDR";
+                        totalAmount.value = billtotalAmount.ToString("#0.00");
+                        additionalInfo.transactionId = maxId.ToString();
 
-                            throw new Exception("No Record Found");
-                        }
+                        vadata.totalAmount = totalAmount;
+                        vadata.additionalInfo = additionalInfo;
+                        response.responseCode = "2002400";
+                        response.responseMessage = "Success";
+                        vadata.inquiryStatus = "00";
+                        vadata.virtualAccountName = vaName;
+
+                        response.virtualAccountData = vadata;
+
                     }
-
-                    VaTotalAmount totalAmount = new();
-                    AdditionalInfo additionalInfo = new();
-                    totalAmount.currency = "IDR";
-                    totalAmount.value = billtotalAmount.ToString("#0.00");
-                    additionalInfo.transactionId = maxId.ToString();
-
-                    vadata.totalAmount = totalAmount;
-                    vadata.additionalInfo = additionalInfo;
-                    response.responseCode = "2002400";
-                    response.responseMessage = "Success";
-                    vadata.inquiryStatus = "00";
-                    vadata.virtualAccountName = vaName;
-
-                    response.virtualAccountData = vadata;
-
+                    else
+                    {
+                        ok = false;
+                        failedResponse = GetModelInvalidError(ModelState, "inquiry");
+                    }
                 }
                 else
                 {
 
                     ok = false;
-                    var errors = ModelState.Values.SelectMany(v => v.Errors)
-                        .Select(e => e.ErrorMessage)
-                        .ToList();
-                    failedResponse.responseMessage = string.Join(", ", errors);
+                    failedResponse.responseCode = "4012400";
+                    failedResponse.responseMessage = "Unauthorized Signature";
                 }
             }
-            else
+            catch (Exception ex)
             {
-
                 ok = false;
-                failedResponse.responseCode = "4012400";
-                failedResponse.responseMessage = "Unauthorized Signature";
+
             }
         }
-        catch (Exception ex)
+        return ok ? Ok(response) : BadRequest(failedResponse);
+    }
+
+    private ApiBaseResponse GetModelInvalidError(ModelStateDictionary ModelState, string apiType)
+    {
+        var errors = new Dictionary<string, List<string>>();
+ApiBaseResponse failedResponse = new();
+        foreach (var state in ModelState)
         {
-            ok = false;
+            var key = state.Key;
+            var stateErrors = state.Value.Errors;
+
+            foreach (var error in stateErrors)
+            {
+                if (!errors.ContainsKey(key))
+                {
+                    errors[key] = new List<string>();
+                }
+
+                errors[key].Add(error.ErrorMessage);
+            }
+        }
+
+        var requiredErrors = errors
+            .Where(e => e.Value.Any(msg => msg.Contains("required")))
+            .Select(s=> s.Key)
+            .ToList();
+
+        var formatErrors = errors
+            .Where(e => e.Value.Any(msg => msg.Contains("Invalid")))
+            .Select(s=> s.Key)
+            .ToList();
+
+        string errorResponseCode = "400XX02";
+        string errorResponseMessage = "Failed";
+        if (requiredErrors.Any())
+        {
+            errorResponseCode = "400XX02";
+            errorResponseMessage = string.Format("Missing Mandatory Field {{{0}}}", string.Join(", ", requiredErrors));
+        }
+        else
+        {
+            errorResponseCode = "400XX01";
+            errorResponseMessage = string.Format("Invalid Field Format {{{0}}}", string.Join(", ", formatErrors));
 
         }
 
-        return ok ? Ok(response) : BadRequest(failedResponse);
+        string apierrorcode = string.Empty;    
+        apierrorcode = apiType switch
+        {
+            "inquiry" => "24",
+            "payment" => "25",
+            _ => apierrorcode
+        };
+        
+        
+        
+        failedResponse.responseCode = errorResponseCode.Replace("XX", apierrorcode);
+        failedResponse.responseMessage = errorResponseMessage;
+
+
+        return failedResponse;
     }
 
     [HttpPost("")]
@@ -212,142 +275,146 @@ public class TransferVaController : ControllerBase
         ApiBaseResponse failedResponse = new();
         failedResponse.responseCode = "4002501";
         failedResponse.responseMessage = "Failed";
+        header = RequestHeaderHelper.GetHeader(base.Request);
         body = JsonConvert.SerializeObject(request, jsonSerializerSettings);
         _logger.Information("payment");
 
-        try
+        if(CheckExternalId(header.xExternalId,"payment", out failedResponse))
+
         {
-            ok = true;
-            bool need_verify = false;
-            bool.TryParse(_config["VERIFY_SIGNATURE:PAYMENT"], out need_verify);
-            if (need_verify)
-                ok = VerifySignature(Request, body, "payment");
-            if (ok)
+            try
             {
-                if (ModelState.IsValid)
+                ok = true;
+                bool need_verify = false;
+                bool.TryParse(_config["VERIFY_SIGNATURE:PAYMENT"], out need_verify);
+                if (need_verify)
+                    ok = VerifySignature(Request, body, "payment");
+                if (ok)
                 {
-
-                    header = RequestHeaderHelper.GetHeader(Request);
-
-
-                    JsonConvert.PopulateObject(JsonConvert.SerializeObject(request), vAPaymentBase);
-
-
-                    decimal totalAmount = 0;
-                    decimal paidAmount = 0;
-                    Decimal.TryParse(vAPaymentBase.totalAmount.value, out totalAmount);
-                    Decimal.TryParse(vAPaymentBase.paidAmount.value, out paidAmount);
-
-
-                    if (CheckVAExists(request.virtualAccountNo))
+                    if (ModelState.IsValid)
                     {
 
-                        SqlCommand cmd = new();
-                        using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
-                        cmd = new SqlCommand(
-                            "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
-                            sqlconn);
-                        cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
-                        SqlDataReader reader = cmd.ExecuteReader();
-                        string customername = string.Empty;
-                        bool gotRows = true;
-                        decimal billAmount = 0;
-                        gotRows = reader.HasRows;
-                        while (reader.Read())
-                        {
-                            billAmount = reader.GetDecimal(0);
-                            customername = reader.GetString(1);
+                        header = RequestHeaderHelper.GetHeader(Request);
 
-                        }
 
-                        reader.Close();
-                        if (gotRows)
+                        JsonConvert.PopulateObject(JsonConvert.SerializeObject(request), vAPaymentBase);
+
+
+                        decimal totalAmount = 0;
+                        decimal paidAmount = 0;
+                        Decimal.TryParse(vAPaymentBase.totalAmount.value, out totalAmount);
+                        Decimal.TryParse(vAPaymentBase.paidAmount.value, out paidAmount);
+
+
+                        if (CheckVAExists(request.virtualAccountNo))
                         {
 
-                            if (paidAmount != billAmount)
+                            SqlCommand cmd = new();
+                            using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
+                            cmd = new SqlCommand(
+                                "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
+                                sqlconn);
+                            cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
+                            SqlDataReader reader = cmd.ExecuteReader();
+                            string customername = string.Empty;
+                            bool gotRows = true;
+                            decimal billAmount = 0;
+                            gotRows = reader.HasRows;
+                            while (reader.Read())
                             {
-                                failedResponse.responseCode = "4042513";
-                                failedResponse.responseMessage = "Invalid Amount";
-                                ok = false;
+                                billAmount = reader.GetDecimal(0);
+                                customername = reader.GetString(1);
+
+                            }
+
+                            reader.Close();
+                            if (gotRows)
+                            {
+
+                                if (paidAmount != billAmount)
+                                {
+                                    failedResponse.responseCode = "4042513";
+                                    failedResponse.responseMessage = "Invalid Amount";
+                                    ok = false;
+
+                                }
+                                else
+                                {
+                                    try
+                                    {
+
+                                        cmd = new SqlCommand(
+                                            "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
+                                            sqlconn);
+                                        cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
+                                        cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
+                                        cmd.Parameters.AddWithValue("@CUSTOMER_NAME", customername);
+                                        cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
+                                        cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.totalAmount.value);
+                                        SqlDataReader sp_reader = cmd.ExecuteReader();
+
+                                        string errorcode = string.Empty;
+                                        while (sp_reader.Read())
+                                        {
+                                            errorcode = sp_reader.GetString(0);
+                                        }
+
+                                        if (errorcode == "00")
+                                        {
+                                            response.responseCode = "2002500";
+                                            response.responseMessage = "Success";
+
+                                            response.virtualAccountData = vAPaymentBase;
+                                        }
+
+                                        ok = true;
+                                    }
+                                    catch (Exception e)
+                                    {
+                                        Console.WriteLine(e);
+                                        ok = false;
+                                    }
+                                }
 
                             }
                             else
                             {
-                                try
-                                {
 
-                                    cmd = new SqlCommand(
-                                        "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
-                                        sqlconn);
-                                    cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
-                                    cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
-                                    cmd.Parameters.AddWithValue("@CUSTOMER_NAME", customername);
-                                    cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
-                                    cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.totalAmount.value);
-                                    SqlDataReader sp_reader = cmd.ExecuteReader();
-
-                                    string errorcode = string.Empty;
-                                    while (sp_reader.Read())
-                                    {
-                                        errorcode = sp_reader.GetString(0);
-                                    }
-
-                                    if (errorcode == "00")
-                                    {
-                                        response.responseCode = "2002500";
-                                        response.responseMessage = "Success";
-
-                                        response.virtualAccountData = vAPaymentBase;
-                                    }
-
-                                    ok = true;
-                                }
-                                catch (Exception e)
-                                {
-                                    Console.WriteLine(e);
-                                    ok = false;
-                                }
+                                ok = false;
                             }
-
                         }
                         else
                         {
-
                             ok = false;
+                            failedResponse.responseCode = "4042512";
+                            failedResponse.responseMessage = "Bill Not Found";
                         }
-                    }
 
+                    }
+                    else
                     {
-                        failedResponse.responseCode = "4042512";
-                        failedResponse.responseMessage = "Bill Not Found";
-                    }
+                        ok = false;
+                        failedResponse = GetModelInvalidError(ModelState,"payment");
 
+                    }
                 }
                 else
                 {
                     ok = false;
-                    var errors = ModelState.Values.SelectMany(v => v.Errors)
-                        .Select(e => e.ErrorMessage)
-                        .ToList();
-                    failedResponse.responseMessage = string.Join(", ", errors);
+                    failedResponse.responseCode = "4012500";
+                    failedResponse.responseMessage = "Unauthorized Signature";
                 }
+
             }
-            else
+            catch (Exception ex)
             {
+                _logger.Information(ex.Message);
+                _logger.Information(ex.InnerException?.Message ?? ex.Message);
+
                 ok = false;
-                failedResponse.responseCode = "4012500";
-                failedResponse.responseMessage = "Unauthorized Signature";
             }
-
+            
         }
-        catch (Exception ex)
-        {
-            _logger.Information(ex.Message);
-            _logger.Information(ex.InnerException?.Message ?? ex.Message);
-
-            ok = false;
-        }
-
 
         return ok ? Ok(response) : Ok(failedResponse);
     }
@@ -501,5 +568,48 @@ public class TransferVaController : ControllerBase
         }
 
         return ok;
+    }
+
+    private bool CheckExternalId(string externalid, string actiontype, out ApiBaseResponse conflict_resp)
+    {
+        bool isvalid = false;
+
+        using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
+        SqlCommand sqlCommand = new SqlCommand("Select * From ExternalIdLogs Where ExternalId = @ExternalId", sqlconn);
+        sqlconn.Open();
+        sqlCommand.Parameters.AddWithValue("@ExternalId", externalid);
+
+        SqlDataReader reader = sqlCommand.ExecuteReader();
+        if (!reader.HasRows)
+        {
+            sqlCommand =
+                new SqlCommand("insert into ExternalIdLogs (ExternalId,IsDuplicate) values (@ExternalId,false)",
+                    sqlconn);
+            sqlCommand.Parameters.AddWithValue("@ExternalId", externalid);
+
+            sqlCommand.ExecuteNonQuery();
+            isvalid = true;
+        }
+
+        sqlconn.Close();
+
+
+
+        conflict_resp = new()
+        {
+            responseCode = "409XX00",
+            responseMessage = "Conflict"
+        };
+        
+        string actioncode  = actiontype switch
+        {
+            "inquiry" => "24",
+            "payment" => "25",
+            _ => "00"
+        };
+
+        conflict_resp.responseCode.Replace("XX", actioncode);
+        return isvalid;
+
     }
 }

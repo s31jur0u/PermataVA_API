@@ -12,26 +12,30 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
 {
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
+        string action = context.ActionDescriptor.DisplayName;
         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<JwtAuthorizeAttribute>>();
-
-        // Check if Authorization header is present
-        if (!context.HttpContext.Request.Headers.TryGetValue("Authorization", out var authHeaderValues))
-        {
-            logger.LogWarning("Authorization header not found.");
-            context.Result = new UnauthorizedResult();
-            return;
-        }
-
-        var bearerToken = authHeaderValues.FirstOrDefault()?.Split(" ").LastOrDefault();
-        if (string.IsNullOrEmpty(bearerToken))
-        {
-            logger.LogWarning("Bearer token not found.");
-            context.Result = new UnauthorizedResult();
-            return;
-        }
-
+        ApiBaseResponse token_resp = new(){
+            responseCode="401XX01",
+            responseMessage="Invalid Access Token"
+        };
         try
         {
+            // Check if Authorization header is present
+            if (!context.HttpContext.Request.Headers.TryGetValue("Authorization", out var authHeaderValues))
+            {
+                logger.LogWarning("Authorization header not found.");
+                throw new Exception();
+            }
+
+            var bearerToken = authHeaderValues.FirstOrDefault()?.Split(" ").LastOrDefault();
+            if (string.IsNullOrEmpty(bearerToken))
+            {
+                logger.LogWarning("Bearer token not found.");
+                throw new Exception();
+
+            }
+
+
             var tokenHandler = new JwtSecurityTokenHandler();
             var tokenValidationParameters = new TokenValidationParameters
             {
@@ -60,11 +64,21 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
         catch (Exception ex)
         {
             logger.LogError(ex, "Error validating JWT token.");
-            ApiBaseResponse response = new(){
-                responseCode="4012401",
-                responseMessage="Unauthorized"
+            string service_id = "24";
+
+      
+            service_id = action.ToLower() switch
+            {
+                "inquiry" => "24",
+                "payment" => "25",
+                _ => "00",
             };
-            context.Result = new OkObjectResult(response);
+            
+            token_resp.responseCode.Replace("XX", service_id);
+            
+            context.Result = new OkObjectResult(token_resp);
         }
     }
+
+    
 }
