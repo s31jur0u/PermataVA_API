@@ -74,7 +74,7 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
                 _ => "00",
             };
             
-            token_resp.responseCode.Replace("XX", service_id);
+            token_resp.responseCode =    token_resp.responseCode.Replace("XX", service_id);
             
             context.Result = new OkObjectResult(token_resp);
         }

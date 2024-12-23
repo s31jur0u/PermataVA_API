@@ -9,10 +9,16 @@ public class B2BRequest()
 public class VaInquiryRequest()
 {
     [Required]
+    [Length(8,8, ErrorMessage = "Invalid Format")]
+
     public string partnerServiceId { get; set; }
     [Required]
+    [Length(12,16, ErrorMessage = "Invalid Format")]
+
     public string customerNo { get; set; }
     [Required]
+    [Length(12,16, ErrorMessage = "Invalid Format")]
+
     public string virtualAccountNo { get; set; }
     // public int channelCode { get; set; }
     [Required]
@@ -23,10 +29,15 @@ public class VaInquiryRequest()
 public class VaPaymentRequest() 
 {
     [Required]    
+    [Length(8,8, ErrorMessage = "Invalid Format")]
+
     public string partnerServiceId { get; set; }
     [Required]    
+    [Length(12,16, ErrorMessage = "Invalid Format")]
+
     public string customerNo { get; set; }
     [Required]    
+    [Length(12,16, ErrorMessage = "Invalid Format")]
     public string virtualAccountNo { get; set; }
     public string? virtualAccountName { get; set; }
     [Required]    
