@@ -16,7 +16,7 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<JwtAuthorizeAttribute>>();
         ApiBaseResponse token_resp = new(){
             responseCode="401XX01",
-            responseMessage="Invalid Access Token"
+            responseMessage="Access Token Invalid"
         };
         try
         {
