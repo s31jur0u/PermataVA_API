@@ -7,12 +7,19 @@ using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc.Controllers;
 
 public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
 {
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
-        string action = context.ActionDescriptor.DisplayName;
+        string action = string.Empty;
+        if (context.ActionDescriptor is ControllerActionDescriptor controllerActionDescriptor)
+        {
+            action = controllerActionDescriptor.ActionName;
+            
+        }
+
         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<JwtAuthorizeAttribute>>();
         ApiBaseResponse token_resp = new(){
             responseCode="401XX01",
