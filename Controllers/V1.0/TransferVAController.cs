@@ -364,7 +364,7 @@ ApiBaseResponse failedResponse = new();
                                         {
                                             response.responseCode = "2002500";
                                             response.responseMessage = "Success";
-
+                                            vAPaymentBase.virtualAccountName = customername;
                                             response.virtualAccountData = vAPaymentBase;
                                         }
 
