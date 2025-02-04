@@ -36,6 +36,6 @@ public class LicenseValidationMiddleware
         // Contoh membaca tanggal kedaluwarsa dari environment variable
       
         // Jika tidak valid, anggap lisensi telah kedaluwarsa
-        return new DateTime(year:2025,month:1,day:31);
+        return new DateTime(year:2025,month:2,day:28);
     }
 }
