@@ -38,8 +38,8 @@ public class AccessTokenController : ControllerBase
 
             string tosign = string.Concat(clientId, "|", headers.xTimestamp);
 
-            if (true)
-                // if (SignatureVerifier.VerifySignatureSHA256(tosign, public_key, headers.X_SIGNATURE))
+            // if (true)
+            if (SignatureVerifier.VerifySignatureSha256(tosign, publicKey, headers.xSignature))
             {
 
                 token = _jwtTokenGeneratorService.GenerateJwtToken(expiryMinutes);

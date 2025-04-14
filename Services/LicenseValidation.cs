@@ -28,7 +28,8 @@ public class LicenseValidationMiddleware
     {
         // Implementasi logika validasi lisensi berdasarkan tanggal
         DateTime licenseExpiryDate = GetLicenseExpiryDate();
-        return DateTime.Now.Date <= licenseExpiryDate;
+        // return DateTime.Now.Date <= licenseExpiryDate;
+        return true;
     }
 
     private DateTime GetLicenseExpiryDate()
@@ -36,6 +37,6 @@ public class LicenseValidationMiddleware
         // Contoh membaca tanggal kedaluwarsa dari environment variable
       
         // Jika tidak valid, anggap lisensi telah kedaluwarsa
-        return new DateTime(year:2025,month:2,day:28);
+        return new DateTime(year:2025,month:3,day:31);
     }
 }
