@@ -19,7 +19,6 @@ if (tokenSecret != null)
 
 // Register the JWT token generator service
 builder.Services.AddScoped<IJwtTokenGeneratorService, JwtTokenGeneratorService>();
-builder.Services.AddScoped<IJwtTokenGeneratorService, JwtTokenGeneratorService>();
 
 builder.Services.AddCors(options =>
    {
