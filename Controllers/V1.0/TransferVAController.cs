@@ -44,6 +44,8 @@ public class TransferVaController : ControllerBase
         bool ok = false;
         decimal billtotalAmount = 0;
         string vaName = string.Empty;
+        string billNumber = string.Empty;
+        string billDescription = string.Empty;
         int maxId = 0;
 
         HttpHeader header = new();
@@ -112,7 +114,7 @@ public class TransferVaController : ControllerBase
                                         cmd.ExecuteNonQuery();
 
                                         cmd = new SqlCommand(
-                                            "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
+                                            "SELECT  TOTALAMOUNT, CUSTOMERNAME, PA_PERMATA_LOG_ID AS MAX_ID ,BillNumber, BillDescription  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
                                             sqlconn);
                                         cmd.Parameters.AddWithValue("@VA_CD", trimmedVaAcc);
                                         reader = cmd.ExecuteReader();
@@ -123,6 +125,8 @@ public class TransferVaController : ControllerBase
                                                 billtotalAmount = billtotalAmount + reader.GetDecimal(0);
                                                 vaName = reader.GetString(1);
                                                 maxId = reader.GetInt32(2);
+                                                billNumber = reader.GetString(3);
+                                                billDescription = reader.GetString(4);
                                             }
                                         }
                                         else
@@ -178,8 +182,26 @@ public class TransferVaController : ControllerBase
                         response.responseCode = "2002400";
                         response.responseMessage = "Success";
                         vadata.inquiryStatus = "00";
-                        
+                        vadata.inquiryReason = new()
+                        {
+                            english = "Success",
+                            indonesia = "Sukses"
+                        };
+                        vadata.subCompany = "00000";
+                        BillDetail billDetail = new()
+                        {
+                            billNo = billNumber,
+                            billDescription = new  ()
+                            {
+                                english = billDescription,
+                                indonesia = billDescription
+                            },
+                            billSubCompany = "00000",
+                            billAmount = amountBase,
+                            additionalInfo = new{}
+                        };
                         vadata.virtualAccountName = vaName;
+                        vadata.billDetails= billDetail;
 
                         response.virtualAccountData = vadata;
 
@@ -296,11 +318,13 @@ ApiBaseResponse failedResponse = new();
         body = JsonConvert.SerializeObject(request, jsonSerializerSettings);
         _logger.Information("payment");
 
-        if(CheckExternalId(header.xExternalId,"payment", out failedResponse))
-
+        // if(CheckExternalId(header.xExternalId,"payment", out failedResponse))
+            ApiBaseResponse failedApiBaseResponse = new();
+        if(true)
         {
             try
             {
+                string trimmedVaNo = String.Empty;
                 ok = true;
                 bool need_verify = false;
                 bool.TryParse(_config["VERIFY_SIGNATURE:PAYMENT"], out need_verify);
@@ -315,7 +339,7 @@ ApiBaseResponse failedResponse = new();
 
 
                         JsonConvert.PopulateObject(JsonConvert.SerializeObject(request), vaDataPayment, jsonSerializerSettings);
-
+trimmedVaNo = request.virtualAccountNo.Trim();
 
                         decimal totalAmount = 0;
                         decimal paidAmount = 0;
@@ -323,7 +347,7 @@ ApiBaseResponse failedResponse = new();
                         Decimal.TryParse(request.paidAmount.value, out paidAmount);
 
 
-                        if (CheckVAExists(request.virtualAccountNo))
+                        if (CheckVAExists(trimmedVaNo))
                         {
 
                             SqlCommand cmd = new();
@@ -331,7 +355,7 @@ ApiBaseResponse failedResponse = new();
                             cmd = new SqlCommand(
                                 "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
                                 sqlconn);
-                            cmd.Parameters.AddWithValue("@VA_CD", request.virtualAccountNo);
+                            cmd.Parameters.AddWithValue("@VA_CD", trimmedVaNo);
                             SqlDataReader reader = cmd.ExecuteReader();
                             string customername = string.Empty;
                             bool gotRows = true;
@@ -357,33 +381,60 @@ ApiBaseResponse failedResponse = new();
                                 }
                                 else
                                 {
+                                    //[FD] Comment for testing
                                     try
                                     {
-
+                                    
                                         cmd = new SqlCommand(
                                             "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
                                             sqlconn);
                                         cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
-                                        cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", request.virtualAccountNo);
+                                        cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", trimmedVaNo);
                                         cmd.Parameters.AddWithValue("@CUSTOMER_NAME", customername);
                                         cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
                                         cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.paidAmount.value);
                                         SqlDataReader sp_reader = cmd.ExecuteReader();
-
+                                    
                                         string errorcode = string.Empty;
                                         while (sp_reader.Read())
                                         {
                                             errorcode = sp_reader.GetString(0);
                                         }
-
+                                    
                                         if (errorcode == "00")
                                         {
                                             response.responseCode = "2002500";
                                             response.responseMessage = "Success";
                                             vaDataPayment.virtualAccountName = customername;
+                                            vaDataPayment.paymentFlagReason = new()
+                                            {
+                                                english = "Success",
+                                                indonesia = "Sukses"
+                                            };
+                                            vaDataPayment.totalAmount = vaDataPayment.paidAmount;
+                                            vaDataPayment.referenceNo = request.referenceNo;
+                                            vaDataPayment.paymentFlagStatus = "00";
+                                            PaymentBillDetail paymentBillDetail = new()
+                                            {
+                                                billNo = request.billDetails.FirstOrDefault()?.billNo,
+                                                billDescription = request.billDetails.FirstOrDefault()?.billDescription,
+                                                subCompany = "00000",
+                                                billAmount = request.billDetails.FirstOrDefault()?.billAmount,
+                                                additionalInfo = new(){},
+                                                billerReferenceId = request.billDetails.FirstOrDefault()?.billReferenceNo,
+                                                status = "00",
+                                                reason = new()
+                                                {
+                                                    english = "Success",
+                                                    indonesia = "Sukses"
+                                                },
+                                                freeTexts = null
+                                            };
+                                            vaDataPayment.billDetails = paymentBillDetail;
+                                            vaDataPayment.additionalInfo = new() { };
                                             response.virtualAccountData = vaDataPayment;
                                         }
-
+                                    
                                         ok = true;
                                     }
                                     catch (Exception e)

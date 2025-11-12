@@ -33,9 +33,9 @@ public class VaLanguage()
 }
 public class BillDetail()
 {
-    public string billCode { get; set; }
+    public string? billCode { get; set; }
     public string billNo { get; set; }
-    public string billName { get; set; }
+    public string? billName { get; set; }
     public string billShortName { get; set; }
     public VaLanguage billDescription { get; set; }
     public string billSubCompany { get; set; }
@@ -44,12 +44,18 @@ public class BillDetail()
 }
 
 
-public class PaymentBillDetail() : BillDetail
+public class PaymentBillDetail() 
 {
+    public string billNo {get; set;}
+    public VaLanguage billDescription {get; set;}
+    public string subCompany {get; set;}
+    public VaAmountBase billAmount { get; set; }
+    public object additionalInfo { get; set; }
+    
     public string billerReferenceId { get; set; }
     public string status { get; set; }
     public VaLanguage reason { get; set; }
-    public List<VaLanguage> freeTexts { get; set; }
+    public object freeTexts { get; set; }
     
 }
 public class AdditionalInfo()

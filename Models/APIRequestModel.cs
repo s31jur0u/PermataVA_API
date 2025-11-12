@@ -57,17 +57,22 @@ public class VaPaymentRequest()
     public string? hashedSourceAccountNo { get; set; }
     public string? sourceBankCode { get; set; }
     public VaAmountBase paidAmount { get; set; }
-    public VaAmountBase cumulaivePaymentAmount { get; set; }
+    public VaAmountBase? cumulaivePaymentAmount { get; set; }
     public string? paidBills { get; set; }
   public VaAmountBase totalAmount  { get; set; }
     public string? trxDateTime { get; set; }
     public string referenceNo { get; set; }
-    public string journalNum { get; set; }
-    public string paymentType { get; set; }
+    public string? journalNum { get; set; }
+    public string? paymentType { get; set; }
     public string flagAdvise { get; set; }
     public string subCompany { get; set; }
-    public string subCompanyCode { get; set; }
-    public List<BillDetail> billDetails { get; set; }
+    public List<PaymentRequestBillDetail> billDetails { get; set; }
     public List<VaLanguage> freeTexts { get; set; }
     public object additionalInfo { get; set; }
+}
+
+
+public class PaymentRequestBillDetail() : BillDetail
+{
+    public string billReferenceNo { get; set; }
 }

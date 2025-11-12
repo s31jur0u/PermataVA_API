@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace VA_API.Controllers.V1._0;
 
-[Route("v1.0/access-token/[action]")]
+[Route("openapi/v1.0/access-token/[action]")]
 public class AccessTokenController : ControllerBase
 {
     private readonly IJwtTokenGeneratorService _jwtTokenGeneratorService;

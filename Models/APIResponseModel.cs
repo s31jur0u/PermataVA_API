@@ -22,7 +22,7 @@ public class VaPaymentResponse : ApiBaseResponse
 
 public class VaDataPayment
 {
-    public VaLanguage paymentFlagResponse { get; set; }
+    public VaLanguage paymentFlagReason { get; set; }
     public string partnerServiceId { get; set; }
     public string customerNo { get; set; }
     public string virtualAccountNo{ get; set; }
@@ -33,7 +33,7 @@ public class VaDataPayment
 public string trxDateTime {get; set;}
 public string referenceNo { get; set; }
 public string paymentFlagStatus { get; set; }
-public List<PaymentBillDetail> billDetails { get; set; }
+public object billDetails { get; set; }
 public List<VaLanguage> freeTexts { get; set; }
 public object additionalInfo { get; set; }
 
