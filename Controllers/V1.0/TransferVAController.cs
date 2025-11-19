@@ -68,9 +68,9 @@ public class TransferVaController : ControllerBase
         vadata.additionalInfo = new() { };
         response.virtualAccountData = vadata;
         
-        // if(CheckExternalId(header.xExternalId, "inquiry",out ApiBaseResponse failedApiBaseResponse))
-        ApiBaseResponse failedApiBaseResponse = new();
-        if(true)
+        if(CheckExternalId(header.xExternalId, "inquiry",out ApiBaseResponse failedApiBaseResponse))
+        // ApiBaseResponse failedApiBaseResponse = new();
+        // if(true)
         {
             try
             {
@@ -318,9 +318,9 @@ ApiBaseResponse failedResponse = new();
         body = JsonConvert.SerializeObject(request, jsonSerializerSettings);
         _logger.Information("payment");
 
-        // if(CheckExternalId(header.xExternalId,"payment", out failedResponse))
-            ApiBaseResponse failedApiBaseResponse = new();
-        if(true)
+        if(CheckExternalId(header.xExternalId,"payment", out failedResponse))
+        //     ApiBaseResponse failedApiBaseResponse = new();
+        // if(true)
         {
             try
             {
@@ -400,7 +400,7 @@ trimmedVaNo = request.virtualAccountNo.Trim();
                                         {
                                             errorcode = sp_reader.GetString(0);
                                         }
-                                    
+                                    _logger.Information($"external id: {header.xExternalId} - errorcode: {errorcode}");
                                         if (errorcode == "00")
                                         {
                                             response.responseCode = "2002500";
@@ -433,12 +433,15 @@ trimmedVaNo = request.virtualAccountNo.Trim();
                                             vaDataPayment.billDetails = paymentBillDetail;
                                             vaDataPayment.additionalInfo = new() { };
                                             response.virtualAccountData = vaDataPayment;
+                                            ok = true;
                                         }
                                     
-                                        ok = true;
                                     }
                                     catch (Exception e)
                                     {
+                                        
+                                        _logger.Information($"external id: {header.xExternalId} - stacktrace: {e.StackTrace}");
+
                                         Console.WriteLine(e);
                                         ok = false;
                                     }
