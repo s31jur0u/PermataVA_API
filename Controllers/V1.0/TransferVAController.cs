@@ -1,4 +1,6 @@
 using System.Data;
+using System.Diagnostics;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -13,12 +15,14 @@ using Serilog;
 namespace VA_API.Controllers.V1._0;
 
 [Route("openapi/v1.0/transfer-va/[action]")]
-// [JwtAuthorize]
+[JwtAuthorize]
 public class TransferVaController : ControllerBase
 {
     private readonly IJwtTokenGeneratorService _jwtTokenGeneratorService;
     private readonly IConfiguration _config;
     private static ISqlConnectionFactory _sqlConnectionFactory;
+    private readonly string _channelId;
+    private readonly string _partnerId;
 
     private JsonSerializerSettings jsonSerializerSettings = new JsonSerializerSettings
     {
@@ -35,6 +39,8 @@ public class TransferVaController : ControllerBase
         _jwtTokenGeneratorService = jwtTokenGeneratorService;
         _config = config;
         _sqlConnectionFactory = sqlConnectionFactory;
+        _channelId = _config["CHANNEL_ID"];
+        _partnerId = _config["PARTNER_ID"];
     }
 
 
@@ -48,10 +54,16 @@ public class TransferVaController : ControllerBase
         string billDescription = string.Empty;
         int maxId = 0;
 
+        HttpStatusCode statusCode = HttpStatusCode.BadRequest;
+
         HttpHeader header = new();
         string body = string.Empty;
         VaInquiryResponse response = new();
         VaData vadata = new();
+        vadata.freeTexts = new List<object>();
+        vadata.billDetails = new List<object>();
+        List<BillDetail> listbilldetails = new();
+
         var settings = new JsonSerializerSettings
         {
             StringEscapeHandling = StringEscapeHandling.EscapeNonAscii
@@ -64,33 +76,60 @@ public class TransferVaController : ControllerBase
         _logger.Information(body);
         body = JsonConvert.SerializeObject(request);
         JsonConvert.PopulateObject(body, vadata);
-
-        vadata.additionalInfo = new() { };
-        response.virtualAccountData = vadata;
-        
-        if(CheckExternalId(header.xExternalId, "inquiry",out ApiBaseResponse failedApiBaseResponse))
-        // ApiBaseResponse failedApiBaseResponse = new();
-        // if(true)
+        vadata.inquiryStatus = "01";
+        // vadata.inquiryReason = new()
+        // {
+        //     english = "Virtual Account Not Found",
+        //     indonesia = "Virtual Account Tidak Ditemukan"
+        // };
+        vadata.subCompany = "00000";
+        vadata.billDetails = new List<object>();
+        vadata.virtualAccountName = "";
+        vadata.totalAmount = new VaAmountBase
+        {
+            value = "",
+            currency = ""
+        };
+        response.additionalInfo = new { };
+        ApiBaseResponse failedApiBaseResponse = new();
+        if (CheckExternalId(header.xExternalId, "inquiry", out failedApiBaseResponse))
+            // if(true)
         {
             try
             {
-               
+
                 string trimmedVaAcc = String.Empty;
                 ok = true;
                 bool need_verify = false;
                 bool.TryParse(_config["VERIFY_SIGNATURE:INQUIRY"], out need_verify);
+
+                var sr = new StreamReader(Request.Body);
+                sr.BaseStream.Seek(0, SeekOrigin.Begin);
+                var rawMessage = sr.ReadToEnd();
+
+
+                if (header.channelId != _channelId || header.xPartnerId != _partnerId)
+                {
+                    failedApiBaseResponse.responseCode = "4012400";
+                    failedApiBaseResponse.responseMessage = "Unauthorized. [Unknown client]";
+                    statusCode = HttpStatusCode.Unauthorized;
+                    throw new Exception("unauthorized");
+                }
+
+
                 if (need_verify)
-                    ok = VerifySignature(Request, body, "inquiry");
+                    ok = VerifySignature(Request, rawMessage, "inquiry");
                 if (ok)
                 {
                     if (ModelState.IsValid)
                     {
-                        trimmedVaAcc =request.virtualAccountNo.Trim();
+                        trimmedVaAcc = request.virtualAccountNo.Trim();
                         if (_config["EXPIRED_VA"] == trimmedVaAcc)
                         {
                             response.responseCode = "4042419";
                             response.responseMessage = "Invalid Bill/Virtual Account";
-                           
+
+                            statusCode = HttpStatusCode.NotFound;
                             throw new Exception("Invalid Bill/Virtual Account");
 
                         }
@@ -118,7 +157,8 @@ public class TransferVaController : ControllerBase
                                             sqlconn);
                                         cmd.Parameters.AddWithValue("@VA_CD", trimmedVaAcc);
                                         reader = cmd.ExecuteReader();
-                                        if (reader.HasRows)
+                                        bool gotRows = reader.HasRows;
+                                        if (gotRows)
                                         {
                                             while (reader.Read())
                                             {
@@ -131,6 +171,7 @@ public class TransferVaController : ControllerBase
                                         }
                                         else
                                         {
+                                            reader.Close();
                                             cmd = new SqlCommand(
                                                 "SELECT top 1 VACD  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD",
                                                 sqlconn);
@@ -145,7 +186,12 @@ public class TransferVaController : ControllerBase
                                             if (gotRows2)
                                             {
                                                 response.responseCode = "4042414";
-                                                response.responseMessage = "Bill Has Been Paid";
+                                                response.responseMessage = "Paid Bill";
+                                                vadata.inquiryReason = new VaLanguage
+                                                {
+                                                    english = "Bill Has Been Paid",
+                                                    indonesia = "Tagihan Sudah Terbayar"
+                                                };
                                             }
 
                                             throw new Exception("Bill Has Been Paid");
@@ -157,15 +203,27 @@ public class TransferVaController : ControllerBase
                                 else
                                 {
                                     response.responseCode = "4042414";
-                                    response.responseMessage = "Bill Has Been Paid";
+                                    response.responseMessage = "Paid Bill";
+                                    vadata.inquiryReason = new VaLanguage
+                                    {
+                                        english = "Bill Has Been Paid",
+                                        indonesia = "Tagihan Sudah Terbayar"
+                                    };
                                     throw new Exception("Bill Has Been Paid");
                                 }
                             }
                             else
                             {
                                 response.responseCode = "4042412";
-                                response.responseMessage = "Bill Not Found";
+                                response.responseMessage = "Invalid Bill/Virtual Account [Not Found]";
+                                vadata.inquiryStatus = "01";
+                                vadata.inquiryReason = new()
+                                {
+                                    english = "Virtual Account Not Found",
+                                    indonesia = "Virtual Account Tidak Ditemukan"
+                                };
 
+                                statusCode = HttpStatusCode.NotFound;
 
                                 throw new Exception("No Record Found");
                             }
@@ -178,9 +236,9 @@ public class TransferVaController : ControllerBase
                         additionalInfo.transactionId = maxId.ToString();
 
                         vadata.totalAmount = amountBase;
-                        
+
                         response.responseCode = "2002400";
-                        response.responseMessage = "Success";
+                        response.responseMessage = "Successful";
                         vadata.inquiryStatus = "00";
                         vadata.inquiryReason = new()
                         {
@@ -191,19 +249,18 @@ public class TransferVaController : ControllerBase
                         BillDetail billDetail = new()
                         {
                             billNo = billNumber,
-                            billDescription = new  ()
+                            billDescription = new()
                             {
                                 english = billDescription,
                                 indonesia = billDescription
                             },
                             billSubCompany = "00000",
                             billAmount = amountBase,
-                            additionalInfo = new{}
+                            additionalInfo = new { }
                         };
+                        listbilldetails.Add(billDetail);
                         vadata.virtualAccountName = vaName;
-                        vadata.billDetails= billDetail;
-
-                        response.virtualAccountData = vadata;
+                        vadata.billDetails = listbilldetails;
 
                     }
                     else
@@ -218,8 +275,10 @@ public class TransferVaController : ControllerBase
                 {
 
                     ok = false;
-                    response.responseCode = "4012400";
-                    response.responseMessage = "Unauthorized Signature";
+                    failedApiBaseResponse.responseCode = "4012400";
+                    failedApiBaseResponse.responseMessage = "Unauthorized. [Signature]";
+                    statusCode = HttpStatusCode.Unauthorized;
+
                 }
             }
             catch (Exception ex)
@@ -232,20 +291,32 @@ public class TransferVaController : ControllerBase
         {
             response.responseCode = failedApiBaseResponse.responseCode;
             response.responseMessage = failedApiBaseResponse.responseMessage;
+            vadata.inquiryReason = new VaLanguage
+            {
+                english = "Cannot use the same X-EXTERNAL-ID",
+                indonesia = "Tidak bisa menggunakan X-EXTERNAL-ID yang sama"
+            };
+            statusCode = HttpStatusCode.Conflict;
+        }
 
-        }
-        if (!ok)
-        {
-            response.virtualAccountData.inquiryReason.english = response.responseMessage;
-            response.virtualAccountData.inquiryReason.indonesia = response.responseMessage;
-        }
-        return ok ? Ok(response) : BadRequest(response);
+        response.virtualAccountData = vadata;
+
+        return ok
+            ? Ok(response)
+            : statusCode switch
+            {
+                HttpStatusCode.Unauthorized => Unauthorized(failedApiBaseResponse),
+                HttpStatusCode.NotFound => NotFound(response),
+                HttpStatusCode.Conflict => Conflict(response),
+                _ => BadRequest(response)
+            };
+        ;
     }
 
     private ApiBaseResponse GetModelInvalidError(ModelStateDictionary ModelState, string apiType)
     {
         var errors = new Dictionary<string, List<string>>();
-ApiBaseResponse failedResponse = new();
+        ApiBaseResponse failedResponse = new();
         foreach (var state in ModelState)
         {
             var key = state.Key;
@@ -264,12 +335,12 @@ ApiBaseResponse failedResponse = new();
 
         var requiredErrors = errors
             .Where(e => e.Value.Any(msg => msg.Contains("required")))
-            .Select(s=> s.Key)
+            .Select(s => s.Key)
             .ToList();
 
         var formatErrors = errors
             .Where(e => e.Value.Any(msg => msg.Contains("Invalid")))
-            .Select(s=> s.Key)
+            .Select(s => s.Key)
             .ToList();
 
         string errorResponseCode = "400XX02";
@@ -286,16 +357,16 @@ ApiBaseResponse failedResponse = new();
 
         }
 
-        string apierrorcode = string.Empty;    
+        string apierrorcode = string.Empty;
         apierrorcode = apiType switch
         {
             "inquiry" => "24",
             "payment" => "25",
             _ => apierrorcode
         };
-        
-        
-        
+
+
+
         failedResponse.responseCode = errorResponseCode.Replace("XX", apierrorcode);
         failedResponse.responseMessage = errorResponseMessage;
 
@@ -311,25 +382,44 @@ ApiBaseResponse failedResponse = new();
         string body = string.Empty;
         VaPaymentResponse response = new();
         VaDataPayment vaDataPayment = new();
-        ApiBaseResponse failedResponse = new();
-        failedResponse.responseCode = "4002501";
-        failedResponse.responseMessage = "Failed";
+        ApiBaseResponse failedApiBaseResponse = new();
+        failedApiBaseResponse.responseCode = "4002501";
+        failedApiBaseResponse.responseMessage = "Failed";
         header = RequestHeaderHelper.GetHeader(base.Request);
         body = JsonConvert.SerializeObject(request, jsonSerializerSettings);
         _logger.Information("payment");
+        HttpStatusCode statusCode = HttpStatusCode.BadRequest;
+        JsonConvert.PopulateObject(body, vaDataPayment);
+        response.additionalInfo = new() { };
 
-        if(CheckExternalId(header.xExternalId,"payment", out failedResponse))
-        //     ApiBaseResponse failedApiBaseResponse = new();
-        // if(true)
+        if (CheckExternalId(header.xExternalId, "payment", out failedApiBaseResponse))
+            //     ApiBaseResponse failedApiBaseResponse = new();
+            // if(true)
         {
             try
             {
                 string trimmedVaNo = String.Empty;
                 ok = true;
+
+                var sr = new StreamReader(Request.Body);
+                sr.BaseStream.Seek(0, SeekOrigin.Begin);
+                var rawMessage = sr.ReadToEnd();
+
+
+                if (header.channelId != _channelId || header.xPartnerId != _partnerId)
+                {
+                    failedApiBaseResponse.responseCode = "4012500";
+                    failedApiBaseResponse.responseMessage = "Unauthorized. [Unknown client]";
+                    statusCode = HttpStatusCode.Unauthorized;
+                    throw new Exception("unauthorized");
+                }
+
+
+
                 bool need_verify = false;
                 bool.TryParse(_config["VERIFY_SIGNATURE:PAYMENT"], out need_verify);
                 if (need_verify)
-                    ok = VerifySignature(Request, body, "payment");
+                    ok = VerifySignature(Request, rawMessage, "payment");
                 if (ok)
                 {
                     if (ModelState.IsValid)
@@ -338,8 +428,9 @@ ApiBaseResponse failedResponse = new();
                         header = RequestHeaderHelper.GetHeader(Request);
 
 
-                        JsonConvert.PopulateObject(JsonConvert.SerializeObject(request), vaDataPayment, jsonSerializerSettings);
-trimmedVaNo = request.virtualAccountNo.Trim();
+                        JsonConvert.PopulateObject(JsonConvert.SerializeObject(request), vaDataPayment,
+                            jsonSerializerSettings);
+                        trimmedVaNo = request.virtualAccountNo.Trim();
 
                         decimal totalAmount = 0;
                         decimal paidAmount = 0;
@@ -374,17 +465,24 @@ trimmedVaNo = request.virtualAccountNo.Trim();
 
                                 if (paidAmount != billAmount)
                                 {
-                                    failedResponse.responseCode = "4042513";
-                                    failedResponse.responseMessage = "Invalid Amount";
+                                    response.responseCode = "4042513";
+                                    response.responseMessage = "Invalid Amount";
                                     ok = false;
+                                    statusCode = HttpStatusCode.NotFound;
 
+                                    vaDataPayment.paymentFlagStatus = "01";
+                                    vaDataPayment.paymentFlagReason = new()
+                                    {
+                                        english = "Invalid Amount",
+                                        indonesia = "Invalid Amount"
+                                    };
                                 }
                                 else
                                 {
                                     //[FD] Comment for testing
                                     try
                                     {
-                                    
+
                                         cmd = new SqlCommand(
                                             "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
                                             sqlconn);
@@ -394,17 +492,19 @@ trimmedVaNo = request.virtualAccountNo.Trim();
                                         cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
                                         cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.paidAmount.value);
                                         SqlDataReader sp_reader = cmd.ExecuteReader();
-                                    
+
                                         string errorcode = string.Empty;
                                         while (sp_reader.Read())
                                         {
                                             errorcode = sp_reader.GetString(0);
                                         }
-                                    _logger.Information($"external id: {header.xExternalId} - errorcode: {errorcode}");
+
+                                        _logger.Information(
+                                            $"external id: {header.xExternalId} - errorcode: {errorcode}");
                                         if (errorcode == "00")
                                         {
                                             response.responseCode = "2002500";
-                                            response.responseMessage = "Success";
+                                            response.responseMessage = "Successful";
                                             vaDataPayment.virtualAccountName = customername;
                                             vaDataPayment.paymentFlagReason = new()
                                             {
@@ -420,8 +520,9 @@ trimmedVaNo = request.virtualAccountNo.Trim();
                                                 billDescription = request.billDetails.FirstOrDefault()?.billDescription,
                                                 subCompany = "00000",
                                                 billAmount = request.billDetails.FirstOrDefault()?.billAmount,
-                                                additionalInfo = new(){},
-                                                billerReferenceId = request.billDetails.FirstOrDefault()?.billReferenceNo,
+                                                additionalInfo = new() { },
+                                                billerReferenceId =
+                                                    request.billDetails.FirstOrDefault()?.billReferenceNo,
                                                 status = "00",
                                                 reason = new()
                                                 {
@@ -431,16 +532,16 @@ trimmedVaNo = request.virtualAccountNo.Trim();
                                                 freeTexts = null
                                             };
                                             vaDataPayment.billDetails = paymentBillDetail;
-                                            vaDataPayment.additionalInfo = new() { };
                                             response.virtualAccountData = vaDataPayment;
                                             ok = true;
                                         }
-                                    
+
                                     }
                                     catch (Exception e)
                                     {
-                                        
-                                        _logger.Information($"external id: {header.xExternalId} - stacktrace: {e.StackTrace}");
+
+                                        _logger.Information(
+                                            $"external id: {header.xExternalId} - stacktrace: {e.StackTrace}");
 
                                         Console.WriteLine(e);
                                         ok = false;
@@ -457,23 +558,48 @@ trimmedVaNo = request.virtualAccountNo.Trim();
                         else
                         {
                             ok = false;
-                            failedResponse.responseCode = "4042512";
-                            failedResponse.responseMessage = "Bill Not Found";
+
+                            response.responseCode = "4042512";
+                            response.responseMessage = "Invalid Bill/Virtual Account [Not Found]";
+                            vaDataPayment.paymentFlagStatus = "01";
+                            vaDataPayment.paymentFlagReason = new()
+                            {
+                                english = "Virtual Account Not Found",
+                                indonesia = "Virtual Account Tidak Ditemukan"
+                            };
+
+                            statusCode = HttpStatusCode.NotFound;
+
+                            throw new Exception("No Record Found");
                         }
 
                     }
                     else
                     {
                         ok = false;
-                        failedResponse = GetModelInvalidError(ModelState,"payment");
+                        failedApiBaseResponse = GetModelInvalidError(ModelState, "payment");
+
+                        response.responseCode = failedApiBaseResponse.responseCode;
+                        response.responseMessage = failedApiBaseResponse.responseMessage;
+                        vaDataPayment.paymentFlagStatus = "01";
+                        vaDataPayment.paymentFlagReason = new()
+                        {
+                            english = response.responseMessage,
+                            indonesia = response.responseMessage
+                        };
+
+                        statusCode = HttpStatusCode.BadRequest;
+
 
                     }
                 }
                 else
                 {
                     ok = false;
-                    failedResponse.responseCode = "4012500";
-                    failedResponse.responseMessage = "Unauthorized Signature";
+                    failedApiBaseResponse.responseCode = "4012500";
+                    failedApiBaseResponse.responseMessage = "Unauthorized. [Signature]";
+                    statusCode = HttpStatusCode.Unauthorized;
+
                 }
 
             }
@@ -484,15 +610,33 @@ trimmedVaNo = request.virtualAccountNo.Trim();
 
                 ok = false;
             }
-            
+
+        }
+        else
+        {
+            response.responseCode = failedApiBaseResponse.responseCode;
+            response.responseMessage = failedApiBaseResponse.responseMessage;
+            vaDataPayment.paymentFlagReason = new VaLanguage
+            {
+                english = "Cannot use the same X-EXTERNAL-ID",
+                indonesia = "Tidak bisa menggunakan X-EXTERNAL-ID yang sama"
+            };
+            statusCode = HttpStatusCode.Conflict;
         }
 
-        if (!ok)
-        {
-            response.responseCode = failedResponse.responseCode;
-            response.responseMessage = failedResponse.responseMessage;
-        }
-        return ok ? Ok(response) : Ok(failedResponse);
+        response.virtualAccountData = vaDataPayment;
+
+
+        return ok
+            ? Ok(response)
+            : statusCode switch
+            {
+                HttpStatusCode.Unauthorized => Unauthorized(failedApiBaseResponse),
+                HttpStatusCode.NotFound => NotFound(response),
+                HttpStatusCode.Conflict => Conflict(response),
+                _ => BadRequest(response)
+            };
+        ;
     }
 
     [HttpPost("")]
@@ -559,6 +703,7 @@ trimmedVaNo = request.virtualAccountNo.Trim();
         string token = tokenHeaders.Split(' ').LastOrDefault();
         string hexbody = GetHexSha256(requestBody);
         string tosing = string.Concat(httpMethod, ":", endpoint, ":", token, ":", hexbody, ":", headers.xTimestamp);
+        Console.WriteLine(tosing);
         ok = SignatureVerifier.VerifyHmacSha512(tosing, headers.xSignature, _config["CLIENT_SECRET"]);
         return ok;
     }
@@ -566,6 +711,7 @@ trimmedVaNo = request.virtualAccountNo.Trim();
     private string GetHexSha256(string input)
     {
         input = MinifyString(input);
+        Console.WriteLine(input);
         using (SHA256 sha256Hash = SHA256.Create())
         {
             // ComputeHash - returns byte array
@@ -590,8 +736,16 @@ trimmedVaNo = request.virtualAccountNo.Trim();
         // // Trim leading and trailing whitespace
         // return minified.Trim();
 
-        JToken parsedJson = JToken.Parse(input);
-        return parsedJson.ToString(Formatting.None); // Minified JSON
+
+        var settings = new JsonSerializerSettings
+        {
+            DateParseHandling = DateParseHandling.None // This is key!
+        };
+
+        // JToken parsedJson = JToken.Parse(input,settings);
+        var obj = JsonConvert.DeserializeObject<JToken>(input, settings);
+
+        return obj.ToString(Formatting.None); // Minified JSON
     }
 
     private bool CheckVAExists(string vaNo)
@@ -617,7 +771,7 @@ trimmedVaNo = request.virtualAccountNo.Trim();
 
         return ok;
     }
-    
+
     private bool CheckGotBill(string vaNo)
     {
         bool ok = false;
@@ -640,7 +794,7 @@ trimmedVaNo = request.virtualAccountNo.Trim();
         }
         catch (Exception e)
         {
-           
+
         }
 
         return ok;
@@ -658,7 +812,7 @@ trimmedVaNo = request.virtualAccountNo.Trim();
 
         SqlDataReader reader = sqlCommand.ExecuteReader();
         bool gotdata = true;
-   gotdata = reader.HasRows;
+        gotdata = reader.HasRows;
         reader.Close();
 
         if (!gotdata)
@@ -671,6 +825,7 @@ trimmedVaNo = request.virtualAccountNo.Trim();
             sqlCommand.ExecuteNonQuery();
             isvalid = true;
         }
+
         sqlconn.Close();
 
 
@@ -680,15 +835,15 @@ trimmedVaNo = request.virtualAccountNo.Trim();
             responseCode = "409XX00",
             responseMessage = "Conflict"
         };
-        
-        string actioncode  = actiontype switch
+
+        string actioncode = actiontype switch
         {
             "inquiry" => "24",
             "payment" => "25",
             _ => "00"
         };
 
-        conflict_resp.responseCode=  conflict_resp.responseCode.Replace("XX", actioncode);
+        conflict_resp.responseCode = conflict_resp.responseCode.Replace("XX", actioncode);
         return isvalid;
 
     }

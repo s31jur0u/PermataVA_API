@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,7 +10,9 @@ public class AccessTokenController : ControllerBase
     private readonly IJwtTokenGeneratorService _jwtTokenGeneratorService;
     private readonly IConfiguration _config;
     private readonly ISqlConnectionFactory _sqlConnectionFactory;
-    public AccessTokenController(IJwtTokenGeneratorService jwtTokenGeneratorService, IConfiguration config, ISqlConnectionFactory sqlConnectionFactory)
+
+    public AccessTokenController(IJwtTokenGeneratorService jwtTokenGeneratorService, IConfiguration config,
+        ISqlConnectionFactory sqlConnectionFactory)
     {
         _jwtTokenGeneratorService = jwtTokenGeneratorService;
         _config = config;
@@ -21,7 +24,7 @@ public class AccessTokenController : ControllerBase
     {
         HttpHeader headers = RequestHeaderHelper.GetHeader(Request);
         bool ok = false;
-
+bool unauthorized = false;
         string token;
         int expiryMinutes = 0;
         int.TryParse(_config["TOKEN:EXPIRY"], out expiryMinutes);
@@ -31,36 +34,69 @@ public class AccessTokenController : ControllerBase
         AccessTokenResponse successResponse = new();
         ApiBaseResponse response = new();
 
-        response.responseCode = "4012400";
-        response.responseMessage = "Unauthorized Signature";
-        if (clientId == headers.xClientKey)
+        response.responseCode = "4007301";
+        response.responseMessage = "Invalid field format [clientId/clientSecret/grantType]";
+
+
+        try
         {
-
-            string tosign = string.Concat(clientId, "|", headers.xTimestamp);
-
-            // if (true)
-            if (SignatureVerifier.VerifySignatureSha256(tosign, publicKey, headers.xSignature))
+            if (!request.grantType.Equals("client_credentials"))
             {
+                response.responseCode = "4007301";
+                response.responseMessage = "Invalid field format [clientId/clientSecret/grantType]";
+                throw new Exception();
+            }
 
-                token = _jwtTokenGeneratorService.GenerateJwtToken(expiryMinutes);
-                successResponse.accessToken = token;
-                successResponse.responseCode = "2000100";
-                successResponse.responseMessage = "Successful";
-                successResponse.tokenType = "Bearer";
-                successResponse.expiresIn = (expiryMinutes * 60).ToString();
-                ok = true;
+            if (!DateTime.TryParseExact(headers.xTimestamp, "yyyy-MM-ddTHH:mm:ssK", CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out DateTime xtimeStamp))
+            {
+                response.responseCode = "4007301";
+                response.responseMessage = "Invalid field format [X-TIMESTAMP]";
+                throw new Exception();
+            }
+            
+            if (clientId == headers.xClientKey)
+            {
+                string tosign = string.Concat(clientId, "|", headers.xTimestamp);
+                if (SignatureVerifier.VerifySignatureSha256(tosign, publicKey, headers.xSignature))
+                {
+
+                    token = _jwtTokenGeneratorService.GenerateJwtToken(expiryMinutes);
+                    successResponse.accessToken = token;
+                    successResponse.responseCode = "2007300";
+                    successResponse.responseMessage = "Successful";
+                    successResponse.tokenType = "Bearer";
+                    successResponse.expiresIn = (expiryMinutes * 60).ToString();
+                    ok = true;
+                }
+                else
+                {
+                    response.responseCode = "4017300";
+                    response.responseMessage = "Unauthorized. [Signature]";
+                    unauthorized = true;
+                    throw new Exception();
+
+                }
             }
             else
             {
-                ok = false;
-                response.responseCode = "4012400";
-                response.responseMessage = "Unauthorized Signature";
+                response.responseCode = "4017300";
+                response.responseMessage = "Unauthorized. [Unknown client]";
+                unauthorized = true;
+
+                throw new Exception();
             }
+
         }
-        return ok ? Ok(successResponse) : BadRequest(response);
+        catch (Exception e)
+        {
+            ok = false;
+        }
+
+        return ok ? Ok(successResponse) : unauthorized? Unauthorized(response): BadRequest(response);
 
     }
-    
+
     [HttpPost("")]
     public IActionResult GetB2BSignature()
     {
@@ -81,6 +117,7 @@ public class AccessTokenController : ControllerBase
         RSA privateKey = RsaKeyExtractor.GetPrivateKey(_config["PRIVATE_KEY"]);
         string tosign = string.Concat(clientId, "|", headers.xTimestamp);
         string signeddata = SignatureVerifier.CreateSignatureSha256(tosign, privateKey);
-        return Ok(new { OK = SignatureVerifier.VerifySignatureSha256(tosign, publicKey, signeddata), SignedData = signeddata });
+        return Ok(new
+            { OK = SignatureVerifier.VerifySignatureSha256(tosign, publicKey, signeddata), SignedData = signeddata });
     }
 }

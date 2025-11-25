@@ -13,11 +13,15 @@ public class AccessTokenResponse :ApiBaseResponse{
 public class VaInquiryResponse: ApiBaseResponse{
 
     public VaData virtualAccountData { get; set; }
+    public object additionalInfo { get; set; }
+
 }
 
 public class VaPaymentResponse : ApiBaseResponse
 {
     public VaDataPayment virtualAccountData { get; set; }
+    public object additionalInfo { get; set; }
+
 }
 
 public class VaDataPayment
@@ -35,6 +39,5 @@ public string referenceNo { get; set; }
 public string paymentFlagStatus { get; set; }
 public object billDetails { get; set; }
 public List<VaLanguage> freeTexts { get; set; }
-public object additionalInfo { get; set; }
 
 }

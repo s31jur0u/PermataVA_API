@@ -12,7 +12,6 @@ public class VaData()
     public string virtualAccountName { get; set; }
     public string inquiryRequestId { get; set; }
     public VaAmountBase totalAmount { get; set; }
-    public object additionalInfo { get; set; }
     public string subCompany { get; set; }
     public object freeTexts { get; set; }
     public object billDetails { get; set; }

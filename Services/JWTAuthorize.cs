@@ -23,7 +23,7 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
         var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<JwtAuthorizeAttribute>>();
         ApiBaseResponse token_resp = new(){
             responseCode="401XX01",
-            responseMessage="Access Token Invalid"
+            responseMessage="Invalid Token (B2B)"
         };
         try
         {
@@ -83,7 +83,7 @@ public class JwtAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
             
             token_resp.responseCode =    token_resp.responseCode.Replace("XX", service_id);
             
-            context.Result = new OkObjectResult(token_resp);
+            context.Result = new UnauthorizedObjectResult(token_resp);
         }
     }
 
