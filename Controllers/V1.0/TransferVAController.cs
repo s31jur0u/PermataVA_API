@@ -92,7 +92,10 @@ public class TransferVaController : ControllerBase
         };
         response.additionalInfo = new { };
         ApiBaseResponse failedApiBaseResponse = new();
-        if (CheckExternalId(header.xExternalId, "inquiry", out failedApiBaseResponse))
+        bool inconsistent = false;
+        string status_inconsistent = "";
+        VaLanguage reason_inconsistent = new();
+        if (CheckExternalId(header.xExternalId,vadata.inquiryRequestId, "inquiry",out status_inconsistent,out reason_inconsistent,out inconsistent, out failedApiBaseResponse))
             // if(true)
         {
             try
@@ -193,6 +196,7 @@ public class TransferVaController : ControllerBase
                                                     indonesia = "Tagihan Sudah Terbayar"
                                                 };
                                             }
+                                            statusCode = HttpStatusCode.NotFound;
 
                                             throw new Exception("Bill Has Been Paid");
 
@@ -209,6 +213,8 @@ public class TransferVaController : ControllerBase
                                         english = "Bill Has Been Paid",
                                         indonesia = "Tagihan Sudah Terbayar"
                                     };
+                                    statusCode = HttpStatusCode.NotFound;
+
                                     throw new Exception("Bill Has Been Paid");
                                 }
                             }
@@ -258,7 +264,7 @@ public class TransferVaController : ControllerBase
                             billAmount = amountBase,
                             additionalInfo = new { }
                         };
-                        listbilldetails.Add(billDetail);
+                        // listbilldetails.Add(billDetail);
                         vadata.virtualAccountName = vaName;
                         vadata.billDetails = listbilldetails;
 
@@ -291,16 +297,27 @@ public class TransferVaController : ControllerBase
         {
             response.responseCode = failedApiBaseResponse.responseCode;
             response.responseMessage = failedApiBaseResponse.responseMessage;
-            vadata.inquiryReason = new VaLanguage
+ vadata.inquiryReason = new VaLanguage
             {
                 english = "Cannot use the same X-EXTERNAL-ID",
                 indonesia = "Tidak bisa menggunakan X-EXTERNAL-ID yang sama"
             };
             statusCode = HttpStatusCode.Conflict;
+            if (inconsistent)
+            {
+                vadata.inquiryStatus = status_inconsistent;
+                vadata.inquiryReason = reason_inconsistent;
+                statusCode = HttpStatusCode.NotFound;
+            }
+            
+           
         }
 
         response.virtualAccountData = vadata;
-
+        if (ok)
+        {
+            UpdateVaApiLog(header.xExternalId, vadata.inquiryRequestId, "inquiry", vadata.inquiryStatus,vadata.inquiryReason);
+        }
         return ok
             ? Ok(response)
             : statusCode switch
@@ -389,21 +406,28 @@ public class TransferVaController : ControllerBase
         body = JsonConvert.SerializeObject(request, jsonSerializerSettings);
         _logger.Information("payment");
         HttpStatusCode statusCode = HttpStatusCode.BadRequest;
+        
+        var sr = new StreamReader(Request.Body);
+        sr.BaseStream.Seek(0, SeekOrigin.Begin);
+        var rawMessage = sr.ReadToEnd();
+        
         JsonConvert.PopulateObject(body, vaDataPayment);
         response.additionalInfo = new() { };
-
-        if (CheckExternalId(header.xExternalId, "payment", out failedApiBaseResponse))
-            //     ApiBaseResponse failedApiBaseResponse = new();
-            // if(true)
+        // vaDataPayment.billDetails = new List<object>(){};
+        vaDataPayment.billDetails = new List<object>();
+        bool inconsistent = false;
+        string status_inconsistent = "";
+        VaLanguage reason_inconsistent = new();
+        if (CheckExternalId(header.xExternalId,vaDataPayment.paymentRequestId, "payment",out status_inconsistent,out reason_inconsistent,out inconsistent, out failedApiBaseResponse))
+//     ApiBaseResponse failedApiBaseResponse = new();
+          //  if(true)
         {
             try
             {
                 string trimmedVaNo = String.Empty;
                 ok = true;
 
-                var sr = new StreamReader(Request.Body);
-                sr.BaseStream.Seek(0, SeekOrigin.Begin);
-                var rawMessage = sr.ReadToEnd();
+              
 
 
                 if (header.channelId != _channelId || header.xPartnerId != _partnerId)
@@ -426,10 +450,7 @@ public class TransferVaController : ControllerBase
                     {
 
                         header = RequestHeaderHelper.GetHeader(Request);
-
-
-                        JsonConvert.PopulateObject(JsonConvert.SerializeObject(request), vaDataPayment,
-                            jsonSerializerSettings);
+                        
                         trimmedVaNo = request.virtualAccountNo.Trim();
 
                         decimal totalAmount = 0;
@@ -444,26 +465,42 @@ public class TransferVaController : ControllerBase
                             SqlCommand cmd = new();
                             using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
                             cmd = new SqlCommand(
-                                "SELECT SUM(TOTALAMOUNT) AS TOTALAMOUNT, MAX(CUSTOMERNAME) AS CUSTOMERNAME, MAX(PA_PERMATA_LOG_ID)  AS MAX_ID  FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
+                                "SELECT TOTALAMOUNT,  CUSTOMERNAME, PA_PERMATA_LOG_ID  AS MAX_ID FROM PA_PERMATA_LOG WHERE VACD = @VA_CD AND STATUS=0",
                                 sqlconn);
                             cmd.Parameters.AddWithValue("@VA_CD", trimmedVaNo);
-                            SqlDataReader reader = cmd.ExecuteReader();
+                         using   SqlDataReader reader = cmd.ExecuteReader();
                             string customername = string.Empty;
                             bool gotRows = true;
-                            decimal billAmount = 0;
-                            gotRows = reader.HasRows;
-                            while (reader.Read())
+                            decimal billAmount = 0m;
+                            try
                             {
-                                billAmount = reader.GetDecimal(0);
-                                customername = reader.GetString(1);
+                                gotRows = reader.HasRows;
+                                while (reader.Read())
+                                {
+                                    billAmount = reader.GetDecimal(0);
+                                    customername = reader.GetString(1);
+
+                                }
+
+                                reader.Close();
+                            }
+                            catch (Exception e)
+                            {
 
                             }
-
-                            reader.Close();
-                            if (gotRows)
+                            finally
+                            {
+                                reader.Close();
+                            }
+                            cmd = new SqlCommand("SELECT 1 FROM PA_PERMATA_LOG WHERE PAYMENTREQUESTID = @PAYMENT_REQUEST_ID", sqlconn);
+                            cmd.Parameters.AddWithValue("@PAYMENT_REQUEST_ID", request.paymentRequestId);
+                            bool haspaid = cmd.ExecuteScalar()  != null;
+                               
+                            
+                            if (!haspaid && gotRows)
                             {
 
-                                if (paidAmount != billAmount)
+                                if (!billAmount.Equals(paidAmount))
                                 {
                                     response.responseCode = "4042513";
                                     response.responseMessage = "Invalid Amount";
@@ -482,15 +519,15 @@ public class TransferVaController : ControllerBase
                                     //[FD] Comment for testing
                                     try
                                     {
-
                                         cmd = new SqlCommand(
-                                            "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT ",
+                                            "EXEC usppa_pay_billva @COMPANY_CODE,@CUSTOMER_NUMBER,@CUSTOMER_NAME,@PAID_AMOUNT,@TOTAL_AMOUNT,@PAYMENT_REQUEST_ID ",
                                             sqlconn);
                                         cmd.Parameters.AddWithValue("@COMPANY_CODE", request.partnerServiceId.Trim());
                                         cmd.Parameters.AddWithValue("@CUSTOMER_NUMBER", trimmedVaNo);
                                         cmd.Parameters.AddWithValue("@CUSTOMER_NAME", customername);
                                         cmd.Parameters.AddWithValue("@PAID_AMOUNT", request.paidAmount.value);
                                         cmd.Parameters.AddWithValue("@TOTAL_AMOUNT", request.paidAmount.value);
+                                        cmd.Parameters.AddWithValue("@PAYMENT_REQUEST_ID", request.paymentRequestId);
                                         SqlDataReader sp_reader = cmd.ExecuteReader();
 
                                         string errorcode = string.Empty;
@@ -514,24 +551,23 @@ public class TransferVaController : ControllerBase
                                             vaDataPayment.totalAmount = vaDataPayment.paidAmount;
                                             vaDataPayment.referenceNo = request.referenceNo;
                                             vaDataPayment.paymentFlagStatus = "00";
-                                            PaymentBillDetail paymentBillDetail = new()
-                                            {
-                                                billNo = request.billDetails.FirstOrDefault()?.billNo,
-                                                billDescription = request.billDetails.FirstOrDefault()?.billDescription,
-                                                subCompany = "00000",
-                                                billAmount = request.billDetails.FirstOrDefault()?.billAmount,
-                                                additionalInfo = new() { },
-                                                billerReferenceId =
-                                                    request.billDetails.FirstOrDefault()?.billReferenceNo,
-                                                status = "00",
-                                                reason = new()
-                                                {
-                                                    english = "Success",
-                                                    indonesia = "Sukses"
-                                                },
-                                                freeTexts = null
-                                            };
-                                            vaDataPayment.billDetails = paymentBillDetail;
+                                            // PaymentBillDetail paymentBillDetail = new()
+                                            // {
+                                            //     billNo = request.billDetails.FirstOrDefault()?.billNo,
+                                            //     billDescription = request.billDetails.FirstOrDefault()?.billDescription,
+                                            //     subCompany = "00000",
+                                            //     billAmount = request.billDetails.FirstOrDefault()?.billAmount,
+                                            //     additionalInfo = new() { },
+                                            //     billerReferenceId =
+                                            //         request.billDetails.FirstOrDefault()?.billReferenceNo,
+                                            //     status = "00",
+                                            //     reason = new()
+                                            //     {
+                                            //         english = "Success",
+                                            //         indonesia = "Sukses"
+                                            //     },
+                                            //     freeTexts = null
+                                            // };
                                             response.virtualAccountData = vaDataPayment;
                                             ok = true;
                                         }
@@ -551,8 +587,29 @@ public class TransferVaController : ControllerBase
                             }
                             else
                             {
+                                response.responseCode = "4042514";
+                                response.responseMessage = "Paid Bill";
+                                vaDataPayment.paymentFlagStatus = "01";
+                                vaDataPayment.paidAmount = new ()
+                                {
+                                    value = "0.00",
+                                    currency = "IDR"
+                                };
+  
+                                vaDataPayment.totalAmount = new ()
+                            
+                                {
+                                    value = "0.00",
+                                    currency = "IDR"
+                                };
+                                vaDataPayment.paymentFlagReason = new VaLanguage
+                                {
+                                    english = "Bill Has Been Paid",
+                                    indonesia = "Tagihan Sudah Terbayar"
+                                };
+                                statusCode = HttpStatusCode.NotFound;
 
-                                ok = false;
+                                throw new Exception("Bill Has Been Paid");
                             }
                         }
                         else
@@ -566,6 +623,19 @@ public class TransferVaController : ControllerBase
                             {
                                 english = "Virtual Account Not Found",
                                 indonesia = "Virtual Account Tidak Ditemukan"
+                            };
+                            vaDataPayment.virtualAccountName = "";
+                            
+                            vaDataPayment.paidAmount = new ()
+                            {
+                                value = "",
+                                currency = ""
+                            };
+  
+                            vaDataPayment.totalAmount = new ()
+                            {
+                                value = "",
+                                currency = ""
                             };
 
                             statusCode = HttpStatusCode.NotFound;
@@ -621,11 +691,35 @@ public class TransferVaController : ControllerBase
                 english = "Cannot use the same X-EXTERNAL-ID",
                 indonesia = "Tidak bisa menggunakan X-EXTERNAL-ID yang sama"
             };
+            vaDataPayment.paymentFlagStatus = "01";
+            vaDataPayment.virtualAccountName = "";
+            vaDataPayment.paidAmount = new()
+            {
+                value = "",
+                currency = ""
+            };
+            vaDataPayment.totalAmount = new()
+            {
+                value = "",
+                currency = ""
+            };
             statusCode = HttpStatusCode.Conflict;
+
+            if (inconsistent)
+            {
+                vaDataPayment.paymentFlagStatus = status_inconsistent;
+                vaDataPayment.paymentFlagReason = reason_inconsistent;
+                statusCode = HttpStatusCode.NotFound;
+            }
+            
         }
 
         response.virtualAccountData = vaDataPayment;
 
+        if (ok)
+        {
+            UpdateVaApiLog(header.xExternalId, vaDataPayment.paymentRequestId, "payment", vaDataPayment.paymentFlagStatus,vaDataPayment.paymentFlagReason);
+        }
 
         return ok
             ? Ok(response)
@@ -636,7 +730,7 @@ public class TransferVaController : ControllerBase
                 HttpStatusCode.Conflict => Conflict(response),
                 _ => BadRequest(response)
             };
-        ;
+        
     }
 
     [HttpPost("")]
@@ -800,28 +894,55 @@ public class TransferVaController : ControllerBase
         return ok;
     }
 
-    private bool CheckExternalId(string externalid, string actiontype, out ApiBaseResponse conflict_resp)
+    private bool CheckExternalId(string externalid, string requestid, string actiontype,out string status_fromdb, out VaLanguage reason, out bool inconsistent, out ApiBaseResponse conflict_resp)
     {
         bool isvalid = false;
+        inconsistent = false;
+        status_fromdb = "";
+        reason = new();
 
         using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
-        SqlCommand sqlCommand = new SqlCommand("Select * From ExternalIdLogs Where ExternalId = @ExternalId", sqlconn);
+        SqlCommand sqlCommand = new SqlCommand("Select requestid,status,response From va_api_logs Where externalid = @externalid and api_name = @api_name ", sqlconn);
         if (sqlconn.State != ConnectionState.Open)
             sqlconn.Open();
-        sqlCommand.Parameters.AddWithValue("@ExternalId", externalid);
+        sqlCommand.Parameters.AddWithValue("@externalid", externalid);
+        sqlCommand.Parameters.AddWithValue("@api_name", actiontype);
 
         SqlDataReader reader = sqlCommand.ExecuteReader();
         bool gotdata = true;
         gotdata = reader.HasRows;
+
+
+        string requestid_fromdb;
+        string reason_fromdb;
+        if (gotdata && actiontype.Equals("payment", StringComparison.InvariantCultureIgnoreCase))
+        {
+            while (reader.Read())
+            {
+                requestid_fromdb = reader.GetString(0);
+                status_fromdb = reader.GetString(1);
+                reason_fromdb = reader.GetString(2);
+            
+                reason = JsonConvert.DeserializeObject<VaLanguage>(reason_fromdb) ?? new VaLanguage();
+
+                if (requestid_fromdb == requestid)
+                {
+                    inconsistent = true;
+                }
+            }
+           
+            
+        }
         reader.Close();
 
         if (!gotdata)
         {
             sqlCommand =
-                new SqlCommand("insert into ExternalIdLogs (ExternalId,IsDuplicate) values (@ExternalId,0)",
+                new SqlCommand("insert into va_api_logs (api_name,externalid,requestid) values (@api_name,@externalid,@requestid)",
                     sqlconn);
-            sqlCommand.Parameters.AddWithValue("@ExternalId", externalid);
-
+            sqlCommand.Parameters.AddWithValue("@externalid", externalid);
+            sqlCommand.Parameters.AddWithValue("@requestid", requestid);
+            sqlCommand.Parameters.AddWithValue("@api_name", actiontype);
             sqlCommand.ExecuteNonQuery();
             isvalid = true;
         }
@@ -843,8 +964,33 @@ public class TransferVaController : ControllerBase
             _ => "00"
         };
 
+        if (inconsistent)
+        {
+            conflict_resp.responseCode = "404XX18";
+            conflict_resp.responseMessage = "Inconsistent Request";
+        }
+
         conflict_resp.responseCode = conflict_resp.responseCode.Replace("XX", actioncode);
         return isvalid;
 
     }
+
+    private void UpdateVaApiLog(string externalid, string requestid, string actiontype, string status,VaLanguage reason)
+    {
+
+        string reason_string = JsonConvert.SerializeObject(reason);
+        
+        using SqlConnection sqlconn = _sqlConnectionFactory.GetOpenConnection();
+        SqlCommand sqlCommand =
+            new SqlCommand("update va_api_logs set status = @status, response = @response where externalid = @externalid and api_name = @api_name  and requestid = @requestid", sqlconn);
+        sqlCommand.Parameters.AddWithValue("@externalid", externalid);
+        sqlCommand.Parameters.AddWithValue("@requestid", requestid);
+        sqlCommand.Parameters.AddWithValue("@api_name", actiontype);
+        sqlCommand.Parameters.AddWithValue("@status", status);
+        sqlCommand.Parameters.AddWithValue("@response", reason_string);
+        sqlCommand.ExecuteNonQuery();
+        
+        sqlconn.Close();
+    }
+    
 }
